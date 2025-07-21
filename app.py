@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, Response
-from flask_pam import PAM
+from functools import wraps
+import simplepam
 import subprocess
 import os
 
@@ -18,9 +19,8 @@ LOGS = {
     "Update Log": "/var/log/update_and_reboot.log",
 }
 
-pam = PAM()
 def check_auth(username, password):
-    return pam.authenticate(username, password)
+    return simplepam.authenticate(username, password)
 
 def authenticate():
     return Response(
