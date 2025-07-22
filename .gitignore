@@ -160,3 +160,7 @@ cython_debug/
 #.idea/
 
 update_dashboard.sh
+
+# Node
+node_modules/
+package-lock.json

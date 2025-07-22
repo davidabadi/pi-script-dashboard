@@ -9,15 +9,11 @@
 <body class="bg-gray-900 flex items-center justify-center min-h-screen">
   <div class="bg-white p-8 rounded shadow-md w-full max-w-md">
     <h2 class="text-xl font-bold mb-6 text-center">🔐 Dashboard Login</h2>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="mb-4 p-3 rounded {{ 'bg-red-100 text-red-800' }}">
-            {{ message }}
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+    <% if (messages && messages.length) { %>
+      <% messages.forEach(msg => { %>
+        <div class="mb-4 p-3 rounded bg-red-100 text-red-800"><%= msg.text %></div>
+      <% }) %>
+    <% } %>
     <form method="POST">
       <div class="mb-4">
         <label for="username" class="block font-medium mb-1">Username</label>
