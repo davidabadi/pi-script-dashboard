@@ -59,9 +59,21 @@ def index():
     cron_output = subprocess.getoutput("sudo crontab -l")
     cron_lines = cron_output.splitlines()
     paused = {}
+    last_status = {}
     for name, tag in CRON_TAGS.items():
         paused[name] = any(tag in line and line.strip().startswith("#") for line in cron_lines)
-    return render_template("index.html", scripts=SCRIPTS, logs=LOGS, cron_output=cron_output, paused=paused)
+        log_path = LOGS.get(f"{name} Log")
+        if log_path and os.path.exists(log_path):
+            try:
+                with open(log_path, "r") as f:
+                    lines = f.readlines()[-10:]
+                    last_status[name] = any("✅" in line for line in reversed(lines))
+            except Exception:
+                last_status[name] = None
+        else:
+            last_status[name] = None
+    return render_template("index.html", scripts=SCRIPTS, logs=LOGS,
+                           cron_output=cron_output, paused=paused, last_status=last_status)
 
 @app.route("/run/<name>")
 @requires_auth
@@ -69,7 +81,7 @@ def run_script(name):
     script = SCRIPTS.get(name)
     if script:
         try:
-            subprocess.Popen(["/bin/bash", script])
+            subprocess.Popen(["sudo", "/bin/bash", script])
             flash(f"✅ '{name}' started successfully.", "success")
         except Exception as e:
             flash(f"❌ Error: {e}", "error")
@@ -109,7 +121,7 @@ def toggle_cron(name):
                 toggled = True
         else:
             updated_lines.append(line)
-    new_cron = "\n".join(updated_lines) + "\n"  # Add trailing newline
+    new_cron = "\n".join(updated_lines) + "\n"
     subprocess.run("sudo crontab -", input=new_cron, text=True, shell=True)
     flash(f"{'▶️ Resumed' if toggled else '⏸️ Paused'} cron job for '{name}'.", "success")
     return redirect(url_for("index"))

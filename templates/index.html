@@ -26,7 +26,14 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
       {% for name, script_path in scripts.items() %}
       <div class="p-4 bg-white rounded shadow">
-        <h2 class="text-xl font-semibold mb-3">{{ name }}</h2>
+        <h2 class="text-xl font-semibold mb-3 flex justify-between items-center">
+          {{ name }}
+          {% if last_status[name] is not none %}
+            <span class="text-xs px-2 py-1 rounded {{ 'bg-green-200 text-green-800' if last_status[name] else 'bg-red-200 text-red-800' }}">
+              {{ 'Success' if last_status[name] else 'Failed' }}
+            </span>
+          {% endif %}
+        </h2>
         <div class="flex flex-wrap gap-2">
           <a href="{{ url_for('run_script', name=name) }}"
              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">▶ Run</a>
