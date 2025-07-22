@@ -56,8 +56,12 @@ def logout():
 @app.route("/")
 @requires_auth
 def index():
-    cron_output = subprocess.getoutput("crontab -l")
-    return render_template("index.html", scripts=SCRIPTS, logs=LOGS, cron_output=cron_output, tags=CRON_TAGS)
+    cron_output = subprocess.getoutput("sudo crontab -l")
+    cron_lines = cron_output.splitlines()
+    paused = {}
+    for name, tag in CRON_TAGS.items():
+        paused[name] = any(tag in line and line.strip().startswith("#") for line in cron_lines)
+    return render_template("index.html", scripts=SCRIPTS, logs=LOGS, cron_output=cron_output, paused=paused)
 
 @app.route("/run/<name>")
 @requires_auth
@@ -84,32 +88,31 @@ def view_log(name):
     flash("❌ Log not found.", "error")
     return redirect(url_for("index"))
 
-@app.route("/pause/<name>")
+@app.route("/toggle_cron/<name>")
 @requires_auth
-def pause_cron(name):
-    cron_lines = subprocess.getoutput("crontab -l").splitlines()
+def toggle_cron(name):
     tag = CRON_TAGS.get(name)
     if not tag:
-        flash("❌ Unknown script for pausing.", "error")
+        flash("❌ Unknown script tag.", "error")
         return redirect(url_for("index"))
-    updated_lines = [f"# {line}" if tag in line and not line.strip().startswith("#") else line for line in cron_lines]
-    new_cron = "\n".join(updated_lines)
-    subprocess.run("crontab -", input=new_cron, text=True, shell=True)
-    flash(f"⏸️ Cron job for '{name}' paused.", "success")
-    return redirect(url_for("index"))
 
-@app.route("/resume/<name>")
-@requires_auth
-def resume_cron(name):
-    cron_lines = subprocess.getoutput("crontab -l").splitlines()
-    tag = CRON_TAGS.get(name)
-    if not tag:
-        flash("❌ Unknown script for resuming.", "error")
-        return redirect(url_for("index"))
-    updated_lines = [line[2:] if line.strip().startswith("#") and tag in line else line for line in cron_lines]
-    new_cron = "\n".join(updated_lines)
-    subprocess.run("crontab -", input=new_cron, text=True, shell=True)
-    flash(f"▶️ Cron job for '{name}' resumed.", "success")
+    cron_lines = subprocess.getoutput("sudo crontab -l").splitlines()
+    updated_lines = []
+    toggled = False
+    for line in cron_lines:
+        if tag in line:
+            if line.strip().startswith("#"):
+                updated_lines.append(line.lstrip("# ").strip())
+                toggled = True
+            else:
+                updated_lines.append(f"# {line}")
+                toggled = True
+        else:
+            updated_lines.append(line)
+    new_cron = "
+".join(updated_lines)
+    subprocess.run("sudo crontab -", input=new_cron, text=True, shell=True)
+    flash(f"{'▶️ Resumed' if toggled else '⏸️ Paused'} cron job for '{name}'.", "success")
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
