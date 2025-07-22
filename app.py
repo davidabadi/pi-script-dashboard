@@ -109,8 +109,7 @@ def toggle_cron(name):
                 toggled = True
         else:
             updated_lines.append(line)
-    new_cron = "
-".join(updated_lines)
+    new_cron = "\n".join(updated_lines)
     subprocess.run("sudo crontab -", input=new_cron, text=True, shell=True)
     flash(f"{'▶️ Resumed' if toggled else '⏸️ Paused'} cron job for '{name}'.", "success")
     return redirect(url_for("index"))
