@@ -126,5 +126,15 @@ def toggle_cron(name):
     flash(f"{'▶️ Resumed' if toggled else '⏸️ Paused'} cron job for '{name}'.", "success")
     return redirect(url_for("index"))
 
+@app.route("/update", methods=["POST"])
+@requires_auth
+def update_dashboard():
+    try:
+        subprocess.Popen(["/bin/bash", "/home/pi/pi-script-dashboard/update_dashboard.sh"])
+        flash("🚀 Dashboard update started...", "success")
+    except Exception as e:
+        flash(f"❌ Failed to run update script: {e}", "error")
+    return redirect(url_for("index"))
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
