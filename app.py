@@ -62,7 +62,7 @@ def index():
     last_status = {}
     for name, tag in CRON_TAGS.items():
         paused[name] = any(tag in line and line.strip().startswith("#") for line in cron_lines)
-        log_path = LOGS.get(f"{name} Log")
+        log_path = LOGS.get(name)
         if log_path and os.path.exists(log_path):
             try:
                 with open(log_path, "r") as f:
