@@ -136,5 +136,11 @@ def update_dashboard():
         flash(f"❌ Failed to run update script: {e}", "error")
         return redirect(url_for("index"))
 
+@app.route("/update-status")
+@requires_auth
+def update_status():
+    updating = os.path.exists("/tmp/dashboard-update.lock")
+    return {"updating": updating}
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)

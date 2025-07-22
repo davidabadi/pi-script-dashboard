@@ -11,12 +11,11 @@
     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3">
       <h1 class="text-2xl font-bold">📋 Script Dashboard</h1>
       <div class="flex flex-col sm:flex-row gap-3">
-        <form action="{{ url_for('update_dashboard') }}" method="POST" id="update-form">
-          <button id="update-button" type="submit"
-            class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded mt-2 disabled:opacity-50 disabled:cursor-not-allowed">
-            🔄 Update Dashboard
-          </button>
-        </form>
+        <button id="update-button"
+          class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded mt-2"
+          onclick="runUpdate()" type="button">
+          🔄 Update Dashboard
+        </button>
         <a href="{{ url_for('logout') }}" class="text-red-600 hover:underline text-sm self-center sm:self-auto">
           Logout
         </a>
@@ -50,8 +49,8 @@
           <a href="{{ url_for('view_log', name=name) }}"
              class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800">📄 View Log</a>
           <a href="{{ url_for('toggle_cron', name=name) }}"
-            class="px-4 py-2 {{ 'bg-green-600 hover:bg-green-700' if paused[name] else 'bg-yellow-500 hover:bg-yellow-600' }} text-white rounded">
-            {{ '▶ Resume' if paused[name] else '⏸ Pause' }}
+             class="px-4 py-2 {{ 'bg-green-600 hover:bg-green-700' if paused[name] else 'bg-yellow-500 hover:bg-yellow-600' }} text-white rounded">
+             {{ '▶ Resume' if paused[name] else '⏸ Pause' }}
           </a>
         </div>
       </div>
@@ -63,21 +62,25 @@
       <pre class="text-sm bg-gray-800 text-green-200 p-3 rounded overflow-auto max-h-96">{{ cron_output }}</pre>
     </div>
   </div>
+
   <script>
-  const form = document.getElementById('update-form');
-  const button = document.getElementById('update-button');
+    async function runUpdate() {
+      const button = document.getElementById("update-button");
+      button.disabled = true;
+      button.innerText = "🔄 Updating...";
 
-  form.addEventListener('submit', () => {
-    button.disabled = true;
-    button.innerText = '🔄 Updating...';
-  });
+      await fetch("{{ url_for('update_dashboard') }}", { method: "POST" });
 
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('updated') === 'true') {
-    setTimeout(() => {
-      window.location.href = window.location.pathname;
-    }, 5000); // refresh after 5 seconds
-  }
-</script>
+      // Poll for update completion
+      const checkInterval = setInterval(async () => {
+        const res = await fetch("/update-status");
+        const data = await res.json();
+        if (!data.updating) {
+          clearInterval(checkInterval);
+          location.reload();
+        }
+      }, 2000);
+    }
+  </script>
 </body>
 </html>
