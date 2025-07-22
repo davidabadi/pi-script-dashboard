@@ -93,8 +93,7 @@ def pause_cron(name):
         flash("❌ Unknown script for pausing.", "error")
         return redirect(url_for("index"))
     updated_lines = [f"# {line}" if tag in line and not line.strip().startswith("#") else line for line in cron_lines]
-    new_cron = "
-".join(updated_lines)
+    new_cron = "\n".join(updated_lines)
     subprocess.run("crontab -", input=new_cron, text=True, shell=True)
     flash(f"⏸️ Cron job for '{name}' paused.", "success")
     return redirect(url_for("index"))
@@ -108,8 +107,7 @@ def resume_cron(name):
         flash("❌ Unknown script for resuming.", "error")
         return redirect(url_for("index"))
     updated_lines = [line[2:] if line.strip().startswith("#") and tag in line else line for line in cron_lines]
-    new_cron = "
-".join(updated_lines)
+    new_cron = "\n".join(updated_lines)
     subprocess.run("crontab -", input=new_cron, text=True, shell=True)
     flash(f"▶️ Cron job for '{name}' resumed.", "success")
     return redirect(url_for("index"))
