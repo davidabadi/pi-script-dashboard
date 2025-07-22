@@ -102,14 +102,14 @@ def toggle_cron(name):
     for line in cron_lines:
         if tag in line:
             if line.strip().startswith("#"):
-                updated_lines.append(line.lstrip("# ").strip())
+                updated_lines.append(line.lstrip("# "))
                 toggled = True
             else:
                 updated_lines.append(f"# {line}")
                 toggled = True
         else:
             updated_lines.append(line)
-    new_cron = "\n".join(updated_lines)
+    new_cron = "\n".join(updated_lines) + "\n"  # Add trailing newline
     subprocess.run("sudo crontab -", input=new_cron, text=True, shell=True)
     flash(f"{'▶️ Resumed' if toggled else '⏸️ Paused'} cron job for '{name}'.", "success")
     return redirect(url_for("index"))
