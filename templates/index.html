@@ -32,10 +32,10 @@
              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">▶ Run</a>
           <a href="{{ url_for('view_log', name=name) }}"
              class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800">📄 View Log</a>
-          <a href="{{ url_for('pause_cron', name=name) }}"
-             class="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">⏸ Pause</a>
-          <a href="{{ url_for('resume_cron', name=name) }}"
-             class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">▶ Resume</a>
+          <a href="{{ url_for('toggle_cron', name=name) }}"
+            class="px-4 py-2 {{ 'bg-green-600 hover:bg-green-700' if paused[name] else 'bg-yellow-500 hover:bg-yellow-600' }} text-white rounded">
+            {{ '▶ Resume' if paused[name] else '⏸ Pause' }}
+          </a>
         </div>
       </div>
       {% endfor %}
