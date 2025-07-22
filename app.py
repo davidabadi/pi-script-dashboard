@@ -17,9 +17,9 @@ SCRIPTS = {
 }
 
 LOGS = {
-    "Conabadi MySQL Backup Log": "/var/log/custom/conabadi_db_backup.log",
-    "Unraid Backup Log": "/var/log/custom/backup_unraid.log",
-    "Update Log": "/var/log/custom/update_and_reboot.log",
+    "Conabadi MySQL Backup": "/var/log/custom/conabadi_db_backup.log",
+    "Unraid Backup": "/var/log/custom/backup_unraid.log",
+    "Update + Reboot": "/var/log/custom/update_and_reboot.log",
 }
 
 CRON_TAGS = {
