@@ -9,7 +9,7 @@ require('dotenv').config();
 const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: process.env.FLASK_SECRET_KEY || 'changeme',
+  secret: process.env.SECRET_KEY || 'changeme',
   resave: false,
   saveUninitialized: false
 }));
