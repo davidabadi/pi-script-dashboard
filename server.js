@@ -3,12 +3,26 @@ const fs = require('fs');
 const { execSync, spawn } = require('child_process');
 const express = require('express');
 const session = require('express-session');
-const pam = require('authenticate-pam');
+const FileStore = require('session-file-store')(session);
+const os = require('os');
+const isLinux = os.platform() === 'linux';
+
+let pam;
+if (isLinux) {
+  pam = require('authenticate-pam');
+} else {
+  console.warn('⚠️ PAM is disabled — using test login for development.');
+}
+
 require('dotenv').config();
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
+  store: new FileStore({
+    path: '/tmp/dashboard-sessions',
+    retries: 1
+  }),
   secret: process.env.SECRET_KEY || 'changeme',
   resave: false,
   saveUninitialized: false
@@ -53,17 +67,34 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-  pam.authenticate(username, password, (err) => {
-    if (!err) {
+
+  if (isLinux) {
+    pam.authenticate(username, password, (err) => {
+      if (!err) {
+        req.session.logged_in = true;
+        req.session.username = username;
+        return res.redirect('/');
+      } else {
+        flash(req, 'error', 'Invalid credentials');
+        return res.redirect('/login');
+      }
+    });
+  } else {
+    // fallback for non-Linux (e.g. Windows/macOS)
+    const TEST_USER = process.env.TEST_USER || 'pi';
+    const TEST_PASS = process.env.TEST_PASS || 'raspberry';
+
+    if (username === TEST_USER && password === TEST_PASS) {
       req.session.logged_in = true;
       req.session.username = username;
-      res.redirect('/');
+      return res.redirect('/');
     } else {
       flash(req, 'error', 'Invalid credentials');
-      res.redirect('/login');
+      return res.redirect('/login');
     }
-  });
+  }
 });
+
 
 app.get('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
