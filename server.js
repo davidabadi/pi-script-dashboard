@@ -43,23 +43,17 @@ app.use(
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "templates"));
 
-const SCRIPTS = {
-  "Conabadi MySQL Backup": "/usr/local/bin/backup_conabadi_db.sh",
-  "Unraid Backup": "/usr/local/bin/backup_unraid.sh",
-  "Update + Reboot": "/usr/local/bin/update_and_reboot.sh",
-};
+const scriptsData = require("./scripts.json");
 
-const LOGS = {
-  "Conabadi MySQL Backup": "/var/log/custom/conabadi_db_backup.log",
-  "Unraid Backup": "/var/log/custom/backup_unraid.log",
-  "Update + Reboot": "/var/log/custom/update_and_reboot.log",
-};
+const SCRIPTS = {};
+const LOGS = {};
+const CRON_TAGS = {};
 
-const CRON_TAGS = {
-  "Conabadi MySQL Backup": "backup_conabadi_db.sh",
-  "Unraid Backup": "backup_unraid.sh",
-  "Update + Reboot": "update_and_reboot.sh",
-};
+for (const [name, info] of Object.entries(scriptsData)) {
+  SCRIPTS[name] = info.script;
+  LOGS[name] = info.log;
+  CRON_TAGS[name] = info.cron_tag;
+}
 
 function flash(req, category, text) {
   if (!req.session.messages) req.session.messages = [];
