@@ -213,7 +213,15 @@ app.get("/log/:name", requiresAuth, (req, res) => {
 app.get("/new", requiresAuth, (req, res) => {
   const messages = req.session.messages || [];
   req.session.messages = [];
-  const data = { name: "", script: "", log: "", cron_tag: "", lock: "", timer: "", content: "" };
+  const data = {
+    name: "",
+    script: "/usr/local/bin/",
+    log: "/var/log/custom/",
+    cron_tag: "",
+    lock: "/etc/",
+    timer: "* * * * *",
+    content: "",
+  };
   res.render("form", { isNew: true, data, messages });
 });
 
