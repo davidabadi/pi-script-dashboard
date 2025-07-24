@@ -48,11 +48,13 @@ const scriptsData = require("./scripts.json");
 const SCRIPTS = {};
 const LOGS = {};
 const CRON_TAGS = {};
+const LOCKS = {};
 
 for (const [name, info] of Object.entries(scriptsData)) {
   SCRIPTS[name] = info.script;
   LOGS[name] = info.log;
   CRON_TAGS[name] = info.cron_tag;
+  LOCKS[name] = info.lock;
 }
 
 function flash(req, category, text) {
@@ -109,11 +111,18 @@ app.get("/", requiresAuth, (req, res) => {
   const cronOutput = execSync("sudo crontab -l").toString();
   const cronLines = cronOutput.split(/\r?\n/);
   const paused = {};
-  const last_status = {};
+  const status = {};
   for (const [name, tag] of Object.entries(CRON_TAGS)) {
     paused[name] = cronLines.some(
       (l) => l.includes(tag) && l.trim().startsWith("#")
     );
+
+    const lockPath = LOCKS[name];
+    if (lockPath && fs.existsSync(lockPath)) {
+      status[name] = "running";
+      continue;
+    }
+
     const logPath = LOGS[name];
     if (logPath && fs.existsSync(logPath)) {
       try {
@@ -122,12 +131,14 @@ app.get("/", requiresAuth, (req, res) => {
           .trim()
           .split(/\r?\n/)
           .slice(-10);
-        last_status[name] = lines.reverse().some((l) => l.includes("✅"));
+        status[name] = lines.reverse().some((l) => l.includes("✅"))
+          ? "success"
+          : "failed";
       } catch (e) {
-        last_status[name] = null;
+        status[name] = null;
       }
     } else {
-      last_status[name] = null;
+      status[name] = null;
     }
   }
   const messages = req.session.messages || [];
@@ -137,7 +148,7 @@ app.get("/", requiresAuth, (req, res) => {
     logs: LOGS,
     cron_output: cronOutput,
     paused,
-    last_status,
+    status,
     messages,
   });
 });

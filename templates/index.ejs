@@ -35,10 +35,14 @@
       <div class="p-4 bg-white rounded shadow">
         <h2 class="text-xl font-semibold mb-3 flex justify-between items-center">
           <%= name %>
-          <% if (last_status[name] !== null) { %>
-            <span class="text-xs px-2 py-1 rounded <%= last_status[name] ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800' %>">
-              <%= last_status[name] ? 'Success' : 'Failed' %>
-            </span>
+          <% if (status[name]) { %>
+            <% if (status[name] === 'running') { %>
+              <span class="text-xs px-2 py-1 rounded bg-blue-200 text-blue-800">Running</span>
+            <% } else { %>
+              <span class="text-xs px-2 py-1 rounded <%= status[name] === 'success' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800' %>">
+                <%= status[name] === 'success' ? 'Success' : 'Failed' %>
+              </span>
+            <% } %>
           <% } %>
         </h2>
         <div class="flex flex-wrap gap-2">
