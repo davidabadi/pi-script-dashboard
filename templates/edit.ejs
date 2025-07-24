@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans h-screen p-4">
-  <div class="bg-gray-800 p-4 rounded shadow h-full flex flex-col">
+  <div class="bg-gray-800 p-4 rounded shadow flex flex-col">
     <h1 class="text-xl font-bold mb-4">✏️ Edit Script</h1>
     <p class="mb-4 text-sm text-gray-300 break-all"><strong>File:</strong> <%= scriptPath %></p>
     <% if (messages && messages.length) { %>
@@ -16,9 +16,9 @@
         <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200' %>"><%= msg.text %></div>
       <% }) %>
     <% } %>
-    <form method="POST" class="flex flex-col h-full">
+    <form method="POST" class="flex flex-col">
       <input type="hidden" name="content" id="hidden-content" />
-      <div id="editor" class="border border-gray-600 rounded flex-1 mb-4"></div>
+      <div id="editor" class="border border-gray-600 rounded mb-4 w-full" style="height:90vh;"></div>
       <div class="flex gap-3">
         <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Save</button>
         <a href="/" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700">Cancel</a>
