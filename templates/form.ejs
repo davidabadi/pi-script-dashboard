@@ -8,14 +8,14 @@
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans h-screen p-4">
-  <div class="bg-gray-800 p-4 rounded shadow h-full flex flex-col">
+  <div class="bg-gray-800 p-4 rounded shadow flex flex-col">
     <h1 class="text-xl font-bold mb-4"><%= isNew ? '➕ Add Script' : '✏️ Edit Script' %></h1>
     <% if (messages && messages.length) { %>
       <% messages.forEach(msg => { %>
         <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200' %>"><%= msg.text %></div>
       <% }) %>
     <% } %>
-    <form method="POST" class="flex flex-col h-full">
+    <form method="POST" class="flex flex-col">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
           <label class="block mb-1 text-sm font-semibold">Script Name</label>
@@ -43,7 +43,7 @@
         </div>
       </div>
       <input type="hidden" name="content" id="hidden-content" />
-      <div id="editor" class="border border-gray-600 rounded mb-4" style="width:90vw;height:90vh;"></div>
+      <div id="editor" class="border border-gray-600 rounded mb-4 w-full" style="height:90vh;"></div>
       <div class="flex gap-3">
         <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Save</button>
         <a href="/" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700">Cancel</a>
