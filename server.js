@@ -215,9 +215,10 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     return res.redirect("/");
   }
   const { content } = req.body;
+  const normalized = content.replace(/\r/g, "");
   try {
     spawnSync("sudo", ["tee", scriptPath], {
-      input: content,
+      input: normalized,
       encoding: "utf8",
       stdio: ["pipe", "ignore", "pipe"],
     });
