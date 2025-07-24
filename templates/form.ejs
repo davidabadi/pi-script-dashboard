@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title><%= isNew ? 'Add Script' : 'Edit Script' %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans h-screen p-4">
+  <div class="bg-gray-800 p-4 rounded shadow h-full flex flex-col">
+    <h1 class="text-xl font-bold mb-4"><%= isNew ? '➕ Add Script' : '✏️ Edit Script' %></h1>
+    <% if (messages && messages.length) { %>
+      <% messages.forEach(msg => { %>
+        <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200' %>"><%= msg.text %></div>
+      <% }) %>
+    <% } %>
+    <form method="POST" class="flex flex-col h-full">
+      <div class="mb-2">
+        <label class="block mb-1 text-sm font-semibold">Script Name</label>
+        <input type="text" name="name" value="<%= data.name %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+      </div>
+      <div class="mb-2">
+        <label class="block mb-1 text-sm font-semibold">Script Full Path</label>
+        <input type="text" name="script" value="<%= data.script %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+      </div>
+      <div class="mb-2">
+        <label class="block mb-1 text-sm font-semibold">Log File</label>
+        <input type="text" name="log" value="<%= data.log %>" class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+      </div>
+      <div class="mb-2">
+        <label class="block mb-1 text-sm font-semibold">cron_tag</label>
+        <input type="text" name="cron_tag" value="<%= data.cron_tag %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+      </div>
+      <div class="mb-2">
+        <label class="block mb-1 text-sm font-semibold">Lock File</label>
+        <input type="text" name="lock" value="<%= data.lock %>" class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+      </div>
+      <div class="mb-2">
+        <label class="block mb-1 text-sm font-semibold">Cron Job Timer</label>
+        <input type="text" name="timer" value="<%= data.timer %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+      </div>
+      <input type="hidden" name="content" id="hidden-content" />
+      <div id="editor" class="border border-gray-600 rounded flex-1 mb-4"></div>
+      <div class="flex gap-3">
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Save</button>
+        <a href="/" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700">Cancel</a>
+      </div>
+    </form>
+  </div>
+  <script>
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      const editor = monaco.editor.create(document.getElementById('editor'), {
+        value: <%- JSON.stringify(data.content) %>,
+        language: 'shell',
+        automaticLayout: true,
+      });
+      document.querySelector('form').addEventListener('submit', () => {
+        document.getElementById('hidden-content').value = editor.getValue();
+      });
+    });
+  </script>
+</body>
+</html>

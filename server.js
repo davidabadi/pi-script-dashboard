@@ -53,6 +53,7 @@ const SCRIPTS = {};
 const LOGS = {};
 const CRON_TAGS = {};
 const LOCKS = {};
+const CRON_TIMERS = {};
 
 for (const [name, info] of Object.entries(scriptsData)) {
   SCRIPTS[name] = info.script;
@@ -60,6 +61,27 @@ for (const [name, info] of Object.entries(scriptsData)) {
   CRON_TAGS[name] = info.cron_tag;
   LOCKS[name] = info.lock;
 }
+
+function loadCronTimers() {
+  let lines = [];
+  try {
+    lines = execSync("sudo crontab -l").toString().split(/\r?\n/);
+  } catch (e) {
+    lines = [];
+  }
+  for (const [name, tag] of Object.entries(CRON_TAGS)) {
+    const line = lines.find((l) => l.includes(tag));
+    if (line) {
+      const cleaned = line.replace(/^#\s*/, "").trim();
+      const m = cleaned.match(/^(@\w+|\S+\s+\S+\s+\S+\s+\S+\s+\S+)/);
+      CRON_TIMERS[name] = m ? m[1] : "";
+    } else {
+      CRON_TIMERS[name] = "";
+    }
+  }
+}
+
+loadCronTimers();
 
 function flash(req, category, text) {
   if (!req.session.messages) req.session.messages = [];
@@ -188,6 +210,68 @@ app.get("/log/:name", requiresAuth, (req, res) => {
   }
 });
 
+app.get("/new", requiresAuth, (req, res) => {
+  const messages = req.session.messages || [];
+  req.session.messages = [];
+  const data = { name: "", script: "", log: "", cron_tag: "", lock: "", timer: "", content: "" };
+  res.render("form", { isNew: true, data, messages });
+});
+
+app.post("/new", requiresAuth, (req, res) => {
+  const { name, script, log, cron_tag, lock, timer, content } = req.body;
+  const normalized = (content || "").replace(/\r/g, "");
+  try {
+    spawnSync("sudo", ["tee", script], {
+      input: normalized,
+      encoding: "utf8",
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    spawnSync("sudo", ["chmod", "+x", script]);
+  } catch (e) {
+    flash(req, "error", `❌ Failed to write script: ${e.message}`);
+    return res.redirect("/");
+  }
+
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8"));
+  } catch (e) {
+    data = {};
+  }
+  data[name] = { script, log, cron_tag, lock };
+  try {
+    fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
+    spawnSync("git", ["add", "scripts.json", script]);
+    spawnSync("git", ["commit", "-m", `Add script ${name}`]);
+    spawnSync("git", ["push"]);
+  } catch (e) {
+    console.warn("Git commit/push failed:", e.message);
+  }
+  SCRIPTS[name] = script;
+  LOGS[name] = log;
+  CRON_TAGS[name] = cron_tag;
+  LOCKS[name] = lock;
+
+  let cronContent = "";
+  try {
+    cronContent = execSync("sudo crontab -l").toString();
+  } catch (e) {
+    cronContent = "";
+  }
+  cronContent += `\n${timer} /bin/bash ${script} >> ${log} 2>&1 # ${cron_tag}\n`;
+  try {
+    execSync("sudo crontab -", { input: cronContent });
+  } catch (e) {
+    flash(req, "error", `❌ Failed to update cron: ${e.message}`);
+    return res.redirect("/");
+  }
+
+  loadCronTimers();
+
+  flash(req, "success", `✅ Added script '${name}'.`);
+  res.redirect("/");
+});
+
 app.get("/edit/:name", requiresAuth, (req, res) => {
   const name = req.params.name;
   const scriptPath = SCRIPTS[name];
@@ -204,28 +288,87 @@ app.get("/edit/:name", requiresAuth, (req, res) => {
   }
   const messages = req.session.messages || [];
   req.session.messages = [];
-  res.render("edit", { name, scriptPath, content, messages });
+  const data = {
+    name,
+    script: scriptPath,
+    log: LOGS[name] || "",
+    cron_tag: CRON_TAGS[name] || "",
+    lock: LOCKS[name] || "",
+    timer: CRON_TIMERS[name] || "",
+    content,
+  };
+  res.render("form", { isNew: false, data, messages });
 });
 
 app.post("/edit/:name", requiresAuth, (req, res) => {
-  const name = req.params.name;
-  const scriptPath = SCRIPTS[name];
-  if (!scriptPath || !fs.existsSync(scriptPath)) {
-    flash(req, "error", "❌ Script not found.");
+  const oldName = req.params.name;
+  const { name, script, log, cron_tag, lock, timer, content } = req.body;
+  const scriptPath = script;
+  const oldTag = CRON_TAGS[oldName];
+  if (!scriptPath) {
+    flash(req, "error", "❌ Script path required.");
     return res.redirect("/");
   }
-  const { content } = req.body;
-  const normalized = content.replace(/\r/g, "");
+  const normalized = (content || "").replace(/\r/g, "");
   try {
     spawnSync("sudo", ["tee", scriptPath], {
       input: normalized,
       encoding: "utf8",
       stdio: ["pipe", "ignore", "pipe"],
     });
-    flash(req, "success", `✅ Saved '${name}' successfully.`);
+    spawnSync("sudo", ["chmod", "+x", scriptPath]);
   } catch (e) {
     flash(req, "error", `❌ Failed to write script: ${e.message}`);
+    return res.redirect("/");
   }
+
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8"));
+  } catch (e) {
+    data = {};
+  }
+  delete data[oldName];
+  data[name] = { script, log, cron_tag, lock };
+  try {
+    fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
+    spawnSync("git", ["add", "scripts.json", scriptPath]);
+    spawnSync("git", ["commit", "-m", `Update script ${name}`]);
+    spawnSync("git", ["push"]);
+  } catch (e) {
+    console.warn("Git commit/push failed:", e.message);
+  }
+
+  delete SCRIPTS[oldName];
+  delete LOGS[oldName];
+  delete CRON_TAGS[oldName];
+  delete LOCKS[oldName];
+  delete CRON_TIMERS[oldName];
+
+  SCRIPTS[name] = script;
+  LOGS[name] = log;
+  CRON_TAGS[name] = cron_tag;
+  LOCKS[name] = lock;
+
+  let cronLines = [];
+  try {
+    cronLines = execSync("sudo crontab -l").toString().split(/\r?\n/);
+  } catch (e) {
+    cronLines = [];
+  }
+  const filtered = cronLines.filter((l) => l && !l.includes(oldTag));
+  filtered.push(`${timer} /bin/bash ${script} >> ${log} 2>&1 # ${cron_tag}`);
+  const newCron = filtered.join("\n") + "\n";
+  try {
+    execSync("sudo crontab -", { input: newCron });
+  } catch (e) {
+    flash(req, "error", `❌ Failed to update cron: ${e.message}`);
+    return res.redirect("/");
+  }
+
+  loadCronTimers();
+
+  flash(req, "success", `✅ Saved '${name}' successfully.`);
   res.redirect("/");
 });
 
