@@ -8,9 +8,9 @@
   <script type="importmap">
     {
       "imports": {
-        "@codemirror/basic-setup": "https://esm.sh/@codemirror/basic-setup",
-        "@codemirror/lang-shell": "https://esm.sh/@codemirror/lang-shell",
-        "@codemirror/view": "https://esm.sh/@codemirror/view"
+        "@codemirror/basic-setup": "https://esm.sh/@codemirror/basic-setup?bundle",
+        "@codemirror/lang-shell": "https://esm.sh/@codemirror/lang-shell?bundle",
+        "@codemirror/view": "https://esm.sh/@codemirror/view?bundle"
       }
     }
   </script>
@@ -39,7 +39,7 @@
     import { shell } from "@codemirror/lang-shell";
 
     const editor = new EditorView({
-      doc: `<%= content.replace(/`/g, '\\`') %>`,
+      doc: <%- JSON.stringify(content) %>,
       extensions: [basicSetup, shell()],
       parent: document.getElementById("editor"),
     });
