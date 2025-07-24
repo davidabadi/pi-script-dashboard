@@ -5,41 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Edit <%= name %></title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "@codemirror/basic-setup": "https://esm.sh/@codemirror/basic-setup",
+        "@codemirror/lang-shell": "https://esm.sh/@codemirror/lang-shell",
+        "@codemirror/view": "https://esm.sh/@codemirror/view"
+      }
+    }
+  </script>
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans p-6">
-  <div class="max-w-xl mx-auto bg-white p-6 rounded shadow">
+  <div class="max-w-3xl mx-auto bg-white p-6 rounded shadow">
     <h1 class="text-xl font-bold mb-4">✏️ Edit Script</h1>
+    <p class="mb-4 text-sm text-gray-700 break-all"><strong>File:</strong> <%= scriptPath %></p>
     <% if (messages && messages.length) { %>
       <% messages.forEach(msg => { %>
         <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' %>"><%= msg.text %></div>
       <% }) %>
     <% } %>
     <form method="POST">
-      <div class="mb-4">
-        <label class="block font-medium mb-1">Name</label>
-        <input type="text" name="name" value="<%= name %>" required class="w-full px-3 py-2 border rounded" />
-      </div>
-      <div class="mb-4">
-        <label class="block font-medium mb-1">Script Path</label>
-        <input type="text" name="script" value="<%= info.script %>" required class="w-full px-3 py-2 border rounded" />
-      </div>
-      <div class="mb-4">
-        <label class="block font-medium mb-1">Log Path</label>
-        <input type="text" name="log" value="<%= info.log %>" class="w-full px-3 py-2 border rounded" />
-      </div>
-      <div class="mb-4">
-        <label class="block font-medium mb-1">Cron Tag</label>
-        <input type="text" name="cron_tag" value="<%= info.cron_tag %>" class="w-full px-3 py-2 border rounded" />
-      </div>
-      <div class="mb-6">
-        <label class="block font-medium mb-1">Lock File</label>
-        <input type="text" name="lock" value="<%= info.lock %>" class="w-full px-3 py-2 border rounded" />
-      </div>
-      <div class="flex gap-3">
+      <input type="hidden" name="content" id="hidden-content" />
+      <div id="editor" class="border rounded h-96"></div>
+      <div class="flex gap-3 mt-4">
         <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Save</button>
         <a href="/" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Cancel</a>
       </div>
     </form>
   </div>
+  <script type="module">
+    import { EditorView } from "@codemirror/view";
+    import { basicSetup } from "@codemirror/basic-setup";
+    import { shell } from "@codemirror/lang-shell";
+
+    const editor = new EditorView({
+      doc: `<%= content.replace(/`/g, '\\`') %>`,
+      extensions: [basicSetup, shell()],
+      parent: document.getElementById("editor"),
+    });
+
+    const form = document.querySelector("form");
+    form.addEventListener("submit", () => {
+      document.getElementById("hidden-content").value = editor.state.doc.toString();
+    });
+  </script>
 </body>
 </html>
