@@ -6,9 +6,9 @@
   <title>Script Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 text-gray-900 font-sans">
+<body class="bg-gray-900 text-gray-100 font-sans">
   <div class="max-w-6xl mx-auto p-6">
-    <header class="bg-white rounded shadow mb-6 px-4 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+    <header class="bg-gray-800 rounded shadow mb-6 px-4 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
       <h1 class="text-2xl font-bold">📋 Script Dashboard</h1>
       <div class="flex gap-3">
         <button id="update-button"
@@ -24,7 +24,7 @@
 
     <% if (messages && messages.length) { %>
       <% messages.forEach(msg => { %>
-        <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' %>">
+        <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200' %>">
           <%= msg.text %>
         </div>
       <% }) %>
@@ -32,7 +32,7 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
       <% for (const name in scripts) { %>
-      <div class="p-4 bg-white rounded shadow">
+      <div class="p-4 bg-gray-800 rounded shadow">
         <h2 class="text-xl font-semibold mb-3 flex justify-between items-center">
           <%= name %>
           <% if (status[name]) { %>
@@ -58,7 +58,7 @@
       <% } %>
     </div>
 
-    <details class="bg-white rounded shadow p-4">
+    <details class="bg-gray-800 rounded shadow p-4">
       <summary class="text-xl font-semibold cursor-pointer select-none">🕒 Current Cron Jobs</summary>
       <pre class="mt-2 text-sm bg-gray-800 text-green-200 p-3 rounded overflow-auto max-h-96"><%= cron_output %></pre>
     </details>

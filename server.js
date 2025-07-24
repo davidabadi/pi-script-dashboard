@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const { execSync, spawn } = require("child_process");
+const { execSync, spawn, spawnSync } = require("child_process");
 const express = require("express");
 const session = require("express-session");
 const FileStore = require("session-file-store")(session);
@@ -216,7 +216,11 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   }
   const { content } = req.body;
   try {
-    fs.writeFileSync(scriptPath, content, "utf8");
+    spawnSync("sudo", ["tee", scriptPath], {
+      input: content,
+      encoding: "utf8",
+      stdio: ["pipe", "ignore", "pipe"],
+    });
     flash(req, "success", `✅ Saved '${name}' successfully.`);
   } catch (e) {
     flash(req, "error", `❌ Failed to write script: ${e.message}`);

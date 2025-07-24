@@ -6,9 +6,11 @@
   <title><%= name %></title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-green-200 font-mono p-4">
-  <h1 class="text-xl font-bold mb-4"><%= name %></h1>
-  <pre class="bg-black p-4 rounded overflow-auto text-sm max-h-screen"><%= content.join('\n') %></pre>
-  <a href="/" class="mt-4 inline-block text-blue-300 hover:underline">← Back to Dashboard</a>
+<body class="bg-gray-900 text-green-200 font-mono h-screen p-4 overflow-hidden flex flex-col">
+  <div class="flex items-center mb-4">
+    <a href="/" class="text-blue-300 hover:underline">← Back to Dashboard</a>
+    <h1 class="flex-grow text-center text-xl font-bold"><%= name %></h1>
+  </div>
+  <pre class="flex-1 bg-black p-4 rounded overflow-auto text-sm"><%= content.join('\n') %></pre>
 </body>
 </html>
