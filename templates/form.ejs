@@ -16,32 +16,34 @@
       <% }) %>
     <% } %>
     <form method="POST" class="flex flex-col h-full">
-      <div class="mb-2">
-        <label class="block mb-1 text-sm font-semibold">Script Name</label>
-        <input type="text" name="name" value="<%= data.name %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
-      </div>
-      <div class="mb-2">
-        <label class="block mb-1 text-sm font-semibold">Script Full Path</label>
-        <input type="text" name="script" value="<%= data.script %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
-      </div>
-      <div class="mb-2">
-        <label class="block mb-1 text-sm font-semibold">Log File</label>
-        <input type="text" name="log" value="<%= data.log %>" class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
-      </div>
-      <div class="mb-2">
-        <label class="block mb-1 text-sm font-semibold">cron_tag</label>
-        <input type="text" name="cron_tag" value="<%= data.cron_tag %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
-      </div>
-      <div class="mb-2">
-        <label class="block mb-1 text-sm font-semibold">Lock File</label>
-        <input type="text" name="lock" value="<%= data.lock %>" class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
-      </div>
-      <div class="mb-2">
-        <label class="block mb-1 text-sm font-semibold">Cron Job Timer</label>
-        <input type="text" name="timer" value="<%= data.timer %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block mb-1 text-sm font-semibold">Script Name</label>
+          <input type="text" name="name" value="<%= data.name %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+        </div>
+        <div>
+          <label class="block mb-1 text-sm font-semibold">Script Full Path</label>
+          <input type="text" name="script" value="<%= data.script %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+        </div>
+        <div>
+          <label class="block mb-1 text-sm font-semibold">Log File</label>
+          <input type="text" name="log" value="<%= data.log %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+        </div>
+        <div>
+          <label class="block mb-1 text-sm font-semibold">Cron Job Tag</label>
+          <input type="text" name="cron_tag" value="<%= data.cron_tag %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+        </div>
+        <div>
+          <label class="block mb-1 text-sm font-semibold">Lock File</label>
+          <input type="text" name="lock" value="<%= data.lock %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+        </div>
+        <div>
+          <label class="block mb-1 text-sm font-semibold">Cron Job Timer</label>
+          <input type="text" name="timer" value="<%= data.timer %>" required class="w-full px-3 py-1 border border-gray-600 rounded bg-gray-700" />
+        </div>
       </div>
       <input type="hidden" name="content" id="hidden-content" />
-      <div id="editor" class="border border-gray-600 rounded flex-1 mb-4"></div>
+      <div id="editor" class="border border-gray-600 rounded mb-4" style="width:90vw;height:90vh;"></div>
       <div class="flex gap-3">
         <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Save</button>
         <a href="/" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-700">Cancel</a>
