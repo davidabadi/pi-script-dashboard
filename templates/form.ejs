@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans h-screen p-4">
-  <div class="bg-gray-800 p-4 rounded shadow flex flex-col">
+  <div class="bg-gray-800 p-4 rounded shadow flex flex-col mb-4">
     <h1 class="text-xl font-bold mb-4"><%= isNew ? '➕ Add Script' : '✏️ Edit Script' %></h1>
     <% if (messages && messages.length) { %>
       <% messages.forEach(msg => { %>
