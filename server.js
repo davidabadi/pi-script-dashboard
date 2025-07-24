@@ -190,65 +190,37 @@ app.get("/log/:name", requiresAuth, (req, res) => {
 
 app.get("/edit/:name", requiresAuth, (req, res) => {
   const name = req.params.name;
-  if (!SCRIPTS[name]) {
+  const scriptPath = SCRIPTS[name];
+  if (!scriptPath || !fs.existsSync(scriptPath)) {
     flash(req, "error", "❌ Script not found.");
+    return res.redirect("/");
+  }
+  let content = "";
+  try {
+    content = fs.readFileSync(scriptPath, "utf8");
+  } catch (e) {
+    flash(req, "error", "❌ Failed to read script file.");
     return res.redirect("/");
   }
   const messages = req.session.messages || [];
   req.session.messages = [];
-  res.render("edit", {
-    name,
-    info: {
-      script: SCRIPTS[name],
-      log: LOGS[name],
-      cron_tag: CRON_TAGS[name],
-      lock: LOCKS[name],
-    },
-    messages,
-  });
+  res.render("edit", { name, scriptPath, content, messages });
 });
 
 app.post("/edit/:name", requiresAuth, (req, res) => {
-  const oldName = req.params.name;
-  if (!SCRIPTS[oldName]) {
+  const name = req.params.name;
+  const scriptPath = SCRIPTS[name];
+  if (!scriptPath || !fs.existsSync(scriptPath)) {
     flash(req, "error", "❌ Script not found.");
     return res.redirect("/");
   }
-
-  const { name, script, log, cron_tag, lock } = req.body;
-
-  let data;
+  const { content } = req.body;
   try {
-    data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json")));
+    fs.writeFileSync(scriptPath, content, "utf8");
+    flash(req, "success", `✅ Saved '${name}' successfully.`);
   } catch (e) {
-    flash(req, "error", "❌ Failed to read config.");
-    return res.redirect("/");
+    flash(req, "error", `❌ Failed to write script: ${e.message}`);
   }
-
-  delete data[oldName];
-  data[name] = { script, log, cron_tag, lock };
-
-  try {
-    fs.writeFileSync(
-      path.join(__dirname, "scripts.json"),
-      JSON.stringify(data, null, 2)
-    );
-  } catch (e) {
-    flash(req, "error", "❌ Failed to write config.");
-    return res.redirect("/");
-  }
-
-  delete SCRIPTS[oldName];
-  delete LOGS[oldName];
-  delete CRON_TAGS[oldName];
-  delete LOCKS[oldName];
-
-  SCRIPTS[name] = script;
-  LOGS[name] = log;
-  CRON_TAGS[name] = cron_tag;
-  LOCKS[name] = lock;
-
-  flash(req, "success", `✅ Updated '${oldName}' successfully.`);
   res.redirect("/");
 });
 
