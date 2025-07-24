@@ -9,7 +9,8 @@
     {
       "imports": {
         "@codemirror/basic-setup": "https://esm.sh/@codemirror/basic-setup?bundle",
-        "@codemirror/lang-shell": "https://esm.sh/@codemirror/lang-shell?bundle",
+        "@codemirror/stream-parser": "https://esm.sh/@codemirror/stream-parser?bundle",
+        "@codemirror/legacy-modes/mode/shell": "https://esm.sh/@codemirror/legacy-modes/mode/shell?bundle",
         "@codemirror/view": "https://esm.sh/@codemirror/view?bundle"
       }
     }
@@ -36,11 +37,12 @@
   <script type="module">
     import { EditorView } from "@codemirror/view";
     import { basicSetup } from "@codemirror/basic-setup";
-    import { shell } from "@codemirror/lang-shell";
+    import { StreamLanguage } from "@codemirror/stream-parser";
+    import { shell } from "@codemirror/legacy-modes/mode/shell";
 
     const editor = new EditorView({
       doc: <%- JSON.stringify(content) %>,
-      extensions: [basicSetup, shell()],
+      extensions: [basicSetup, StreamLanguage.define(shell)],
       parent: document.getElementById("editor"),
     });
 
