@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Script Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans">
   <div class="max-w-6xl mx-auto p-6">
@@ -61,7 +62,7 @@
 
     <details class="bg-gray-800 rounded shadow p-4">
       <summary class="text-xl font-semibold cursor-pointer select-none">🕒 Current Cron Jobs</summary>
-      <pre class="mt-2 text-sm bg-black text-green-200 font-mono p-3 rounded overflow-auto max-h-96"><%= cron_output %></pre>
+      <div id="cron-editor" class="mt-2 border border-gray-600 rounded" style="height:300px;"></div>
     </details>
   </div>
 
@@ -84,6 +85,16 @@
         }
       }, 2000);
     }
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.create(document.getElementById('cron-editor'), {
+        value: <%- JSON.stringify(cron_output) %>,
+        language: 'shell',
+        readOnly: true,
+        automaticLayout: true,
+        theme: 'vs-dark',
+      });
+    });
   </script>
 </body>
 </html>
