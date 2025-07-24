@@ -5,12 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title><%= name %></title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
 <body class="bg-gray-900 text-green-200 font-mono h-screen p-4 overflow-hidden flex flex-col">
   <div class="flex items-center mb-4">
     <a href="/" class="text-blue-300 hover:underline">← Back to Dashboard</a>
     <h1 class="flex-grow text-center text-xl font-bold"><%= name %></h1>
   </div>
-  <pre class="flex-1 bg-black p-4 rounded overflow-auto text-sm"><%= content.join('\n') %></pre>
+  <div id="editor" class="flex-1 border border-gray-600 rounded" style="height:90vh;"></div>
+  <script>
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monaco.editor.create(document.getElementById('editor'), {
+        value: <%- JSON.stringify(content.join('\n')) %>,
+        language: 'shell',
+        readOnly: true,
+        automaticLayout: true,
+        theme: 'vs-dark',
+      });
+    });
+  </script>
 </body>
 </html>

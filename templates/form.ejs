@@ -57,6 +57,7 @@
         value: <%- JSON.stringify(data.content) %>,
         language: 'shell',
         automaticLayout: true,
+        theme: 'vs-dark',
       });
       document.querySelector('form').addEventListener('submit', () => {
         document.getElementById('hidden-content').value = editor.getValue();
