@@ -19,7 +19,11 @@ if (fs.existsSync(lockFile)) {
 
 let pam;
 if (isLinux) {
-  pam = require("authenticate-pam");
+  try {
+    pam = require("authenticate-pam");
+  } catch (e) {
+    console.warn("⚠️ 'authenticate-pam' not available. Using test login.");
+  }
 } else {
   console.warn("⚠️ PAM is disabled — using test login for development.");
 }
@@ -76,7 +80,7 @@ app.get("/login", (req, res) => {
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
-  if (isLinux) {
+  if (isLinux && pam) {
     pam.authenticate(username, password, (err) => {
       if (!err) {
         req.session.logged_in = true;
@@ -88,7 +92,7 @@ app.post("/login", (req, res) => {
       }
     });
   } else {
-    // fallback for non-Linux (e.g. Windows/macOS)
+    // fallback when PAM is unavailable or on non-Linux platforms
     const TEST_USER = process.env.TEST_USER || "pi";
     const TEST_PASS = process.env.TEST_PASS || "raspberry";
 
@@ -182,6 +186,70 @@ app.get("/log/:name", requiresAuth, (req, res) => {
     flash(req, "error", "❌ Log not found.");
     res.redirect("/");
   }
+});
+
+app.get("/edit/:name", requiresAuth, (req, res) => {
+  const name = req.params.name;
+  if (!SCRIPTS[name]) {
+    flash(req, "error", "❌ Script not found.");
+    return res.redirect("/");
+  }
+  const messages = req.session.messages || [];
+  req.session.messages = [];
+  res.render("edit", {
+    name,
+    info: {
+      script: SCRIPTS[name],
+      log: LOGS[name],
+      cron_tag: CRON_TAGS[name],
+      lock: LOCKS[name],
+    },
+    messages,
+  });
+});
+
+app.post("/edit/:name", requiresAuth, (req, res) => {
+  const oldName = req.params.name;
+  if (!SCRIPTS[oldName]) {
+    flash(req, "error", "❌ Script not found.");
+    return res.redirect("/");
+  }
+
+  const { name, script, log, cron_tag, lock } = req.body;
+
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json")));
+  } catch (e) {
+    flash(req, "error", "❌ Failed to read config.");
+    return res.redirect("/");
+  }
+
+  delete data[oldName];
+  data[name] = { script, log, cron_tag, lock };
+
+  try {
+    fs.writeFileSync(
+      path.join(__dirname, "scripts.json"),
+      JSON.stringify(data, null, 2)
+    );
+  } catch (e) {
+    flash(req, "error", "❌ Failed to write config.");
+    return res.redirect("/");
+  }
+
+  delete SCRIPTS[oldName];
+  delete LOGS[oldName];
+  delete CRON_TAGS[oldName];
+  delete LOCKS[oldName];
+
+  SCRIPTS[name] = script;
+  LOGS[name] = log;
+  CRON_TAGS[name] = cron_tag;
+  LOCKS[name] = lock;
+
+  flash(req, "success", `✅ Updated '${oldName}' successfully.`);
+  res.redirect("/");
 });
 
 app.get("/toggle_cron/:name", requiresAuth, (req, res) => {

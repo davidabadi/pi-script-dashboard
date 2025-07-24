@@ -52,15 +52,16 @@
              class="px-4 py-2 <%= paused[name] ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-500 hover:bg-yellow-600' %> text-white rounded">
              <%= paused[name] ? '▶ Resume' : '⏸ Pause' %>
           </a>
+          <a href="/edit/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">✏ Edit</a>
         </div>
       </div>
       <% } %>
     </div>
 
-    <div class="bg-white rounded shadow p-4">
-      <h2 class="text-xl font-semibold mb-2">🕒 Current Cron Jobs</h2>
-      <pre class="text-sm bg-gray-800 text-green-200 p-3 rounded overflow-auto max-h-96"><%= cron_output %></pre>
-    </div>
+    <details class="bg-white rounded shadow p-4">
+      <summary class="text-xl font-semibold cursor-pointer select-none">🕒 Current Cron Jobs</summary>
+      <pre class="mt-2 text-sm bg-gray-800 text-green-200 p-3 rounded overflow-auto max-h-96"><%= cron_output %></pre>
+    </details>
   </div>
 
   <script>
