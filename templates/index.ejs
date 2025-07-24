@@ -8,19 +8,19 @@
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans">
   <div class="max-w-6xl mx-auto p-6">
-    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3">
+    <header class="bg-white rounded shadow mb-6 px-4 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
       <h1 class="text-2xl font-bold">📋 Script Dashboard</h1>
-      <div class="flex flex-col sm:flex-row gap-3">
+      <div class="flex gap-3">
         <button id="update-button"
-          class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded mt-2"
+          class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded"
           onclick="runUpdate()" type="button">
           🔄 Update Dashboard
         </button>
-        <a href="/logout" class="text-red-600 hover:underline text-sm self-center sm:self-auto">
+        <a href="/logout" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded text-center">
           Logout
         </a>
       </div>
-    </div>
+    </header>
 
     <% if (messages && messages.length) { %>
       <% messages.forEach(msg => { %>
