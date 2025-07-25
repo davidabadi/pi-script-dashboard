@@ -66,29 +66,6 @@
       <div id="cron-editor" class="mt-2 border border-gray-600 rounded" style="height:300px;"></div>
     </details>
 
-    <details class="bg-gray-800 rounded shadow p-4 mt-6">
-      <summary class="text-xl font-semibold cursor-pointer select-none">💾 Drive Usage</summary>
-      <table class="mt-2 w-full text-left">
-        <thead>
-          <tr>
-            <th class="px-2 py-1">Mount</th>
-            <th class="px-2 py-1">Used</th>
-            <th class="px-2 py-1">Total</th>
-            <th class="px-2 py-1">Usage</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% drives.forEach(d => { %>
-          <tr>
-            <td class="px-2 py-1"><%= d.target %> (<%= d.source %>)</td>
-            <td class="px-2 py-1"><%= d.used %></td>
-            <td class="px-2 py-1"><%= d.size %></td>
-            <td class="px-2 py-1"><%= d.percent %></td>
-          </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    </details>
   </div>
 
   <script>

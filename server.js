@@ -55,12 +55,6 @@ const CRON_TAGS = {};
 const LOCKS = {};
 const CRON_TIMERS = {};
 
-function formatSize(bytes) {
-  const TB = 1024 ** 4;
-  const GB = 1024 ** 3;
-  if (bytes >= TB) return (bytes / TB).toFixed(2) + " TB";
-  return (bytes / GB).toFixed(2) + " GB";
-}
 
 for (const [name, info] of Object.entries(scriptsData)) {
   SCRIPTS[name] = info.script;
@@ -179,29 +173,6 @@ app.get("/", requiresAuth, (req, res) => {
       lastRun[name] = null;
     }
   }
-  let dfLines = [];
-  try {
-    dfLines = execSync(
-      'df -B1 --output=source,size,used,pcent,target -x tmpfs -x devtmpfs'
-    )
-      .toString()
-      .trim()
-      .split(/\r?\n/)
-      .slice(1);
-  } catch (e) {
-    dfLines = [];
-  }
-  const drives = dfLines.map((line) => {
-    const parts = line.replace(/\s+/g, ' ').trim().split(' ');
-    const [source, size, used, pcent, target] = parts;
-    return {
-      source,
-      target,
-      size: formatSize(parseInt(size, 10)),
-      used: formatSize(parseInt(used, 10)),
-      percent: pcent,
-    };
-  });
   const messages = req.session.messages || [];
   req.session.messages = [];
   res.render("index", {
@@ -211,7 +182,6 @@ app.get("/", requiresAuth, (req, res) => {
     paused,
     status,
     messages,
-    drives,
     last_run: lastRun,
   });
 });
