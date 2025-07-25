@@ -47,6 +47,7 @@
             <% } %>
           <% } %>
         </h2>
+        <p class="text-sm text-gray-300 mb-2">Last run: <%= last_run[name] || 'Never' %></p>
         <div class="flex flex-wrap gap-2">
           <a href="/run/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">▶ Run</a>
           <a href="/log/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800">📄 View Log</a>
