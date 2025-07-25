@@ -145,6 +145,7 @@ app.get("/", requiresAuth, (req, res) => {
   const cronLines = cronOutput.split(/\r?\n/);
   const paused = {};
   const status = {};
+  const lastRun = {};
   for (const [name, tag] of Object.entries(CRON_TAGS)) {
     paused[name] = cronLines.some(
       (l) => l.includes(tag) && l.trim().startsWith("#")
@@ -159,6 +160,8 @@ app.get("/", requiresAuth, (req, res) => {
     const logPath = LOGS[name];
     if (logPath && fs.existsSync(logPath)) {
       try {
+        const stats = fs.statSync(logPath);
+        lastRun[name] = stats.mtime.toLocaleString();
         const lines = fs
           .readFileSync(logPath, "utf8")
           .trim()
@@ -169,9 +172,11 @@ app.get("/", requiresAuth, (req, res) => {
           : "failed";
       } catch (e) {
         status[name] = null;
+        lastRun[name] = null;
       }
     } else {
       status[name] = null;
+      lastRun[name] = null;
     }
   }
   let dfLines = [];
@@ -207,6 +212,7 @@ app.get("/", requiresAuth, (req, res) => {
     status,
     messages,
     drives,
+    last_run: lastRun,
   });
 });
 
