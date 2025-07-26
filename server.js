@@ -6,6 +6,30 @@ const session = require("express-session");
 const FileStore = require("session-file-store")(session);
 const os = require("os");
 const isLinux = os.platform() === "linux";
+
+function safeExecSync(cmd, options = {}) {
+  if (!isLinux) {
+    console.warn(`⚠️ Skipping execSync on non-Linux: ${cmd}`);
+    return Buffer.from("");
+  }
+  return execSync(cmd, options);
+}
+
+function safeSpawnSync(cmd, args, options = {}) {
+  if (!isLinux) {
+    console.warn(`⚠️ Skipping spawnSync on non-Linux: ${cmd} ${args.join(" ")}`);
+    return { status: 0 };
+  }
+  return spawnSync(cmd, args, options);
+}
+
+function safeSpawn(cmd, args, options = {}) {
+  if (!isLinux) {
+    console.warn(`⚠️ Skipping spawn on non-Linux: ${cmd} ${args.join(" ")}`);
+    return { unref() {} };
+  }
+  return spawn(cmd, args, options);
+}
 const lockFile = "/tmp/dashboard-update.lock";
 
 if (fs.existsSync(lockFile)) {
@@ -66,7 +90,7 @@ for (const [name, info] of Object.entries(scriptsData)) {
 function loadCronTimers() {
   let lines = [];
   try {
-    lines = execSync("sudo crontab -l").toString().split(/\r?\n/);
+    lines = safeExecSync("sudo crontab -l").toString().split(/\r?\n/);
   } catch (e) {
     lines = [];
   }
@@ -135,7 +159,7 @@ app.get("/logout", (req, res) => {
 });
 
 app.get("/", requiresAuth, (req, res) => {
-  const cronOutput = execSync("sudo crontab -l").toString();
+  const cronOutput = safeExecSync("sudo crontab -l").toString();
   const cronLines = cronOutput.split(/\r?\n/);
   const paused = {};
   const status = {};
@@ -191,7 +215,7 @@ app.get("/run/:name", requiresAuth, (req, res) => {
   const script = SCRIPTS[name];
   if (script) {
     try {
-      spawn("sudo", ["/bin/bash", script], {
+      safeSpawn("sudo", ["/bin/bash", script], {
         detached: true,
         stdio: "ignore",
       }).unref();
@@ -236,12 +260,12 @@ app.post("/new", requiresAuth, (req, res) => {
   const { name, script, log, cron_tag, lock, timer, content } = req.body;
   const normalized = (content || "").replace(/\r/g, "");
   try {
-    spawnSync("sudo", ["tee", script], {
+    safeSpawnSync("sudo", ["tee", script], {
       input: normalized,
       encoding: "utf8",
       stdio: ["pipe", "ignore", "pipe"],
     });
-    spawnSync("sudo", ["chmod", "+x", script]);
+    safeSpawnSync("sudo", ["chmod", "+x", script]);
   } catch (e) {
     flash(req, "error", `❌ Failed to write script: ${e.message}`);
     return res.redirect("/");
@@ -256,9 +280,9 @@ app.post("/new", requiresAuth, (req, res) => {
   data[name] = { script, log, cron_tag, lock };
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
-    spawnSync("git", ["add", "scripts.json", script]);
-    spawnSync("git", ["commit", "-m", `Add script ${name}`]);
-    spawnSync("git", ["push"]);
+    safeSpawnSync("git", ["add", "scripts.json", script]);
+    safeSpawnSync("git", ["commit", "-m", `Add script ${name}`]);
+    safeSpawnSync("git", ["push"]);
   } catch (e) {
     console.warn("Git commit/push failed:", e.message);
   }
@@ -269,13 +293,13 @@ app.post("/new", requiresAuth, (req, res) => {
 
   let cronContent = "";
   try {
-    cronContent = execSync("sudo crontab -l").toString();
+    cronContent = safeExecSync("sudo crontab -l").toString();
   } catch (e) {
     cronContent = "";
   }
   cronContent += `\n${timer} /bin/bash ${script} >> ${log} 2>&1 # ${cron_tag}\n`;
   try {
-    execSync("sudo crontab -", { input: cronContent });
+    safeExecSync("sudo crontab -", { input: cronContent });
   } catch (e) {
     flash(req, "error", `❌ Failed to update cron: ${e.message}`);
     return res.redirect("/");
@@ -326,12 +350,12 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   }
   const normalized = (content || "").replace(/\r/g, "");
   try {
-    spawnSync("sudo", ["tee", scriptPath], {
+    safeSpawnSync("sudo", ["tee", scriptPath], {
       input: normalized,
       encoding: "utf8",
       stdio: ["pipe", "ignore", "pipe"],
     });
-    spawnSync("sudo", ["chmod", "+x", scriptPath]);
+    safeSpawnSync("sudo", ["chmod", "+x", scriptPath]);
   } catch (e) {
     flash(req, "error", `❌ Failed to write script: ${e.message}`);
     return res.redirect("/");
@@ -347,9 +371,9 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   data[name] = { script, log, cron_tag, lock };
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
-    spawnSync("git", ["add", "scripts.json", scriptPath]);
-    spawnSync("git", ["commit", "-m", `Update script ${name}`]);
-    spawnSync("git", ["push"]);
+    safeSpawnSync("git", ["add", "scripts.json", scriptPath]);
+    safeSpawnSync("git", ["commit", "-m", `Update script ${name}`]);
+    safeSpawnSync("git", ["push"]);
   } catch (e) {
     console.warn("Git commit/push failed:", e.message);
   }
@@ -367,7 +391,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
 
   let cronLines = [];
   try {
-    cronLines = execSync("sudo crontab -l").toString().split(/\r?\n/);
+    cronLines = safeExecSync("sudo crontab -l").toString().split(/\r?\n/);
   } catch (e) {
     cronLines = [];
   }
@@ -375,7 +399,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   filtered.push(`${timer} /bin/bash ${script} >> ${log} 2>&1 # ${cron_tag}`);
   const newCron = filtered.join("\n") + "\n";
   try {
-    execSync("sudo crontab -", { input: newCron });
+    safeExecSync("sudo crontab -", { input: newCron });
   } catch (e) {
     flash(req, "error", `❌ Failed to update cron: ${e.message}`);
     return res.redirect("/");
@@ -394,7 +418,7 @@ app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
     flash(req, "error", "❌ Unknown script tag.");
     return res.redirect("/");
   }
-  const cronLines = execSync("sudo crontab -l").toString().split(/\r?\n/);
+  const cronLines = safeExecSync("sudo crontab -l").toString().split(/\r?\n/);
   const updatedLines = [];
   let resumed = false;
   for (const line of cronLines) {
@@ -411,7 +435,7 @@ app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
     }
   }
   const newCron = updatedLines.join("\n") + "\n";
-  execSync("sudo crontab -", { input: newCron });
+  safeExecSync("sudo crontab -", { input: newCron });
   flash(
     req,
     "success",
@@ -422,7 +446,7 @@ app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
 
 app.post("/update", requiresAuth, (req, res) => {
   try {
-    spawn("/bin/bash", ["/home/pi/pi-script-dashboard/update_dashboard.sh"], {
+    safeSpawn("/bin/bash", ["/home/pi/pi-script-dashboard/update_dashboard.sh"], {
       detached: true,
       stdio: "ignore",
     }).unref();
