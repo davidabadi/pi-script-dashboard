@@ -180,14 +180,15 @@ app.get("/", requiresAuth, (req, res) => {
       try {
         const stats = fs.statSync(logPath);
         lastRun[name] = stats.mtime.toLocaleString();
-        const lines = fs
-          .readFileSync(logPath, "utf8")
-          .trim()
-          .split(/\r?\n/)
-          .slice(-10);
-        status[name] = lines.reverse().some((l) => l.includes("✅"))
-          ? "success"
-          : "failed";
+        const content = fs.readFileSync(logPath, "utf8").trim();
+        if (!content) {
+          status[name] = null;
+        } else {
+          const lines = content.split(/\r?\n/).slice(-10);
+          status[name] = lines.reverse().some((l) => l.includes("✅"))
+            ? "success"
+            : "failed";
+        }
       } catch (e) {
         status[name] = null;
         lastRun[name] = null;
