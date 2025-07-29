@@ -7,18 +7,18 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans">
+<body class="bg-neutral-950 text-neutral-100 font-sans">
   <div class="max-w-6xl mx-auto p-6">
-    <header class="bg-gray-800 rounded shadow mb-6 px-4 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+    <header class="bg-neutral-900 border border-neutral-700 rounded shadow mb-6 px-4 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
       <h1 class="text-2xl font-bold">📋 Script Dashboard</h1>
       <div class="flex gap-3">
-        <a href="/new" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded text-center">➕ New Script</a>
+        <a href="/new" class="bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded text-center">➕ New Script</a>
         <button id="update-button"
-          class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded"
+          class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded"
           onclick="runUpdate()" type="button">
           🔄 Update Dashboard
         </button>
-        <a href="/logout" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded text-center">
+        <a href="/logout" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2 px-4 rounded text-center">
           Logout
         </a>
       </div>
@@ -26,7 +26,7 @@
 
     <% if (messages && messages.length) { %>
       <% messages.forEach(msg => { %>
-        <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200' %>">
+        <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-neutral-800 text-green-300' : 'bg-neutral-800 text-rose-300' %>">
           <%= msg.text %>
         </div>
       <% }) %>
@@ -34,25 +34,25 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
       <% for (const name in scripts) { %>
-      <div class="p-4 bg-gray-800 rounded shadow">
+      <div class="p-4 bg-neutral-900 border border-neutral-700 rounded shadow">
         <h2 class="text-xl font-semibold mb-3 flex justify-between items-center">
           <%= name %>
           <% if (status[name]) { %>
             <% if (status[name] === 'running') { %>
-              <span class="text-xs px-2 py-1 rounded bg-blue-200 text-blue-800">Running</span>
+              <span class="text-xs px-2 py-1 rounded bg-sky-200 text-sky-800">Running</span>
             <% } else { %>
-              <span class="text-xs px-2 py-1 rounded <%= status[name] === 'success' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800' %>">
+              <span class="text-xs px-2 py-1 rounded <%= status[name] === 'success' ? 'bg-green-200 text-green-800' : 'bg-rose-200 text-rose-800' %>">
                 <%= status[name] === 'success' ? 'Success' : 'Failed' %>
               </span>
             <% } %>
           <% } %>
         </h2>
-        <p class="text-sm text-gray-300 mb-2">Last run: <%= last_run[name] || 'Never' %></p>
+        <p class="text-sm text-neutral-300 mb-2">Last run: <%= last_run[name] || 'Never' %></p>
         <div class="flex flex-wrap gap-2">
-          <a href="/run/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">▶ Run</a>
-          <a href="/log/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800">📄 View Log</a>
+          <a href="/run/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700">▶ Run</a>
+          <a href="/log/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-neutral-700 text-white rounded hover:bg-neutral-600">📄 View Log</a>
           <a href="/toggle_cron/<%= encodeURIComponent(name) %>"
-             class="px-4 py-2 <%= paused[name] ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-500 hover:bg-yellow-600' %> text-white rounded">
+             class="px-4 py-2 <%= paused[name] ? 'bg-teal-600 hover:bg-teal-700' : 'bg-yellow-600 hover:bg-yellow-700' %> text-white rounded">
              <%= paused[name] ? '▶ Resume' : '⏸ Pause' %>
           </a>
           <a href="/edit/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">✏ Edit</a>
@@ -61,9 +61,9 @@
       <% } %>
     </div>
 
-    <details class="bg-gray-800 rounded shadow p-4">
+    <details class="bg-neutral-900 border border-neutral-700 rounded shadow p-4">
       <summary class="text-xl font-semibold cursor-pointer select-none">🕒 Current Cron Jobs</summary>
-      <div id="cron-editor" class="mt-2 border border-gray-600 rounded" style="height:300px;"></div>
+      <div id="cron-editor" class="mt-2 border border-neutral-700 rounded" style="height:300px;"></div>
     </details>
 
   </div>

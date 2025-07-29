@@ -7,12 +7,12 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
-<body class="bg-gray-900 text-green-200 font-mono h-screen p-4 overflow-hidden flex flex-col">
+<body class="bg-neutral-950 text-neutral-200 font-mono h-screen p-4 overflow-hidden flex flex-col">
   <div class="flex items-center mb-4">
-    <a href="/" class="text-blue-300 hover:underline">← Back to Dashboard</a>
+    <a href="/" class="text-sky-400 hover:underline">← Back to Dashboard</a>
     <h1 class="flex-grow text-center text-xl font-bold"><%= name %></h1>
   </div>
-  <div id="editor" class="flex-1 border border-gray-600 rounded" style="height:90vh;"></div>
+  <div id="editor" class="flex-1 border border-neutral-700 rounded" style="height:90vh;"></div>
   <script>
     require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
     require(['vs/editor/editor.main'], function () {
