@@ -32,9 +32,9 @@
       <% }) %>
     <% } %>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-      <% for (const name in scripts) { %>
-      <div class="p-4 bg-neutral-900 border border-neutral-700 rounded shadow">
+    <div id="scripts-list" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+      <% scriptOrder.forEach(name => { %>
+      <div class="p-4 bg-neutral-900 border border-neutral-700 rounded shadow" data-name="<%= name %>">
         <h2 class="text-xl font-semibold mb-3 flex justify-between items-center">
           <%= name %>
           <% if (status[name]) { %>
@@ -58,7 +58,7 @@
           <a href="/edit/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">✏ Edit</a>
         </div>
       </div>
-      <% } %>
+      <% }) %>
     </div>
 
     <details class="bg-neutral-900 border border-neutral-700 rounded shadow p-4">
@@ -68,6 +68,7 @@
 
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <script>
     async function runUpdate() {
       const button = document.getElementById("update-button");
@@ -95,6 +96,22 @@
         readOnly: true,
         automaticLayout: true,
         theme: 'vs-dark',
+      });
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+      const el = document.getElementById('scripts-list');
+      if (!el) return;
+      Sortable.create(el, {
+        animation: 150,
+        handle: 'h2',
+        onEnd: async () => {
+          const order = Array.from(el.children).map((c) => c.dataset.name);
+          await fetch('/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order }),
+          });
+        },
       });
     });
   </script>
