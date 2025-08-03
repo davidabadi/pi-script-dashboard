@@ -35,7 +35,7 @@
     <div id="scripts-list" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
       <% scriptOrder.forEach(name => { %>
       <div class="p-4 bg-neutral-900 border border-neutral-700 rounded shadow" data-name="<%= name %>">
-        <h2 class="text-xl font-semibold mb-3 flex justify-between items-center">
+        <h2 class="text-xl font-semibold mb-3 flex justify-between items-center cursor-move select-none" draggable="true">
           <%= name %>
           <% if (status[name]) { %>
             <% if (status[name] === 'running') { %>
