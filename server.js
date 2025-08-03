@@ -56,6 +56,7 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(
   session({
     store: new FileStore({
@@ -73,14 +74,18 @@ app.set("views", path.join(__dirname, "templates"));
 
 const scriptsData = require("./scripts.json");
 
+let scriptOrder = Object.keys(scriptsData).sort(
+  (a, b) => (scriptsData[a].order ?? 0) - (scriptsData[b].order ?? 0)
+);
+
 const SCRIPTS = {};
 const LOGS = {};
 const CRON_TAGS = {};
 const LOCKS = {};
 const CRON_TIMERS = {};
 
-
-for (const [name, info] of Object.entries(scriptsData)) {
+for (const name of scriptOrder) {
+  const info = scriptsData[name];
   SCRIPTS[name] = info.script;
   LOGS[name] = info.log;
   CRON_TAGS[name] = info.cron_tag;
@@ -202,6 +207,7 @@ app.get("/", requiresAuth, (req, res) => {
   req.session.messages = [];
   res.render("index", {
     scripts: SCRIPTS,
+    scriptOrder,
     logs: LOGS,
     cron_output: cronOutput,
     paused,
@@ -278,7 +284,9 @@ app.post("/new", requiresAuth, (req, res) => {
   } catch (e) {
     data = {};
   }
-  data[name] = { script, log, cron_tag, lock };
+  const nextOrder =
+    Math.max(-1, ...Object.values(data).map((d) => d.order ?? 0)) + 1;
+  data[name] = { script, log, cron_tag, lock, order: nextOrder };
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
     safeSpawnSync("git", ["add", "scripts.json", script]);
@@ -291,6 +299,7 @@ app.post("/new", requiresAuth, (req, res) => {
   LOGS[name] = log;
   CRON_TAGS[name] = cron_tag;
   LOCKS[name] = lock;
+  scriptOrder.push(name);
 
   let cronContent = "";
   try {
@@ -368,8 +377,9 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   } catch (e) {
     data = {};
   }
+  const oldOrder = data[oldName] ? data[oldName].order : scriptOrder.indexOf(oldName);
   delete data[oldName];
-  data[name] = { script, log, cron_tag, lock };
+  data[name] = { script, log, cron_tag, lock, order: oldOrder };
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
     safeSpawnSync("git", ["add", "scripts.json", scriptPath]);
@@ -389,6 +399,8 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   LOGS[name] = log;
   CRON_TAGS[name] = cron_tag;
   LOCKS[name] = lock;
+  const idx = scriptOrder.indexOf(oldName);
+  if (idx !== -1) scriptOrder[idx] = name;
 
   let cronLines = [];
   try {
@@ -443,6 +455,34 @@ app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
     `${resumed ? "▶️ Resumed" : "⏸️ Paused"} cron job for '${name}'.`
   );
   res.redirect("/");
+});
+
+app.post("/reorder", requiresAuth, (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order)) {
+    return res.status(400).json({ error: "Invalid order" });
+  }
+  let data;
+  try {
+    data = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8")
+    );
+  } catch (e) {
+    data = {};
+  }
+  order.forEach((name, idx) => {
+    if (data[name]) data[name].order = idx;
+  });
+  try {
+    fs.writeFileSync(
+      path.join(__dirname, "scripts.json"),
+      JSON.stringify(data, null, 2)
+    );
+  } catch (e) {
+    return res.status(500).json({ error: "Failed to save order" });
+  }
+  scriptOrder = order;
+  res.json({ success: true });
 });
 
 app.post("/update", requiresAuth, (req, res) => {
