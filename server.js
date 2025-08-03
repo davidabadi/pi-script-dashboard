@@ -482,6 +482,15 @@ app.post("/reorder", requiresAuth, (req, res) => {
     return res.status(500).json({ error: "Failed to save order" });
   }
   scriptOrder = order;
+
+  try {
+    safeExecSync("git add scripts.json");
+    safeExecSync('git commit -m "chore: update script order"');
+    safeExecSync("git push");
+  } catch (e) {
+    return res.status(500).json({ error: "Failed to commit and push order" });
+  }
+
   res.json({ success: true });
 });
 
