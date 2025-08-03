@@ -4,6 +4,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "build:css": "tailwindcss -i ./tailwind.css -o ./public/tailwind.css --minify",
     "postinstall": "node -e \"if (process.platform !== 'linux') console.warn('⚠️ Skipping authenticate-pam on non-Linux platform.')\""
   },
   "dependencies": {
@@ -15,5 +16,8 @@
   },
   "optionalDependencies": {
     "authenticate-pam": "^1.0.5"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.3.2"
   }
 }
