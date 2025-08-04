@@ -4,3 +4,9 @@ package-lock.json
 
 # Environment variables
 .env
+
+# Update script
+update_dashboard.sh
+
+# Generated Tailwind CSS
+public/tailwind.css
