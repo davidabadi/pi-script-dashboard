@@ -4,7 +4,7 @@
     "log": "/var/log/custom/update_and_reboot.log",
     "cron_tag": "update_and_reboot.sh",
     "lock": "/etc/update_and_reboot.lock",
-    "order": 1
+    "order": 2
   },
   "Conabadi MySQL Backup": {
     "script": "/usr/local/bin/backup_conabadi_db.sh",
@@ -18,6 +18,6 @@
     "log": "/var/log/custom/backup_unraid.log",
     "cron_tag": "backup_unraid.sh",
     "lock": "/etc/backup_unraid.lock",
-    "order": 2
+    "order": 1
   }
 }
