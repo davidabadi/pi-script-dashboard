@@ -487,9 +487,19 @@ app.post("/reorder", requiresAuth, (req, res) => {
   try {
     safeExecSync("git add scripts.json");
     safeExecSync('git commit -m "chore: update script order"');
-    safeExecSync("git push");
   } catch (e) {
-    return res.status(500).json({ error: "Failed to commit and push order" });
+    console.warn("⚠️ Failed to commit updated order:", e.message);
+  }
+
+  try {
+    const remotes = safeExecSync("git remote").toString().trim();
+    if (remotes) {
+      safeExecSync("git push");
+    } else {
+      console.warn("⚠️ No git remote configured; skipping push.");
+    }
+  } catch (e) {
+    console.warn("⚠️ Failed to push updated order:", e.message);
   }
 
   res.json({ success: true });
