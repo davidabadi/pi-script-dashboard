@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Script Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/tailwind.css" />
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
 <body class="bg-neutral-950 text-neutral-100 font-sans">
@@ -68,7 +68,6 @@
 
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <script>
     async function runUpdate() {
       const button = document.getElementById("update-button");
@@ -88,8 +87,13 @@
         }
       }, 2000);
     }
-    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
-    require(['vs/editor/editor.main'], function () {
+    require.config({
+      paths: {
+        vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs',
+        sortablejs: 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min'
+      }
+    });
+    require(['vs/editor/editor.main', 'sortablejs'], function (_, Sortable) {
       monaco.editor.create(document.getElementById('cron-editor'), {
         value: <%- JSON.stringify(cron_output) %>,
         language: 'shell',
@@ -97,22 +101,21 @@
         automaticLayout: true,
         theme: 'vs-dark',
       });
-    });
-    document.addEventListener('DOMContentLoaded', () => {
       const el = document.getElementById('scripts-list');
-      if (!el) return;
-      Sortable.create(el, {
-        animation: 150,
-        handle: 'h2',
-        onEnd: async () => {
-          const order = Array.from(el.children).map((c) => c.dataset.name);
-          await fetch('/reorder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order }),
-          });
-        },
-      });
+      if (el) {
+        Sortable.create(el, {
+          animation: 150,
+          handle: 'h2',
+          onEnd: async () => {
+            const order = Array.from(el.children).map((c) => c.dataset.name);
+            await fetch('/reorder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ order }),
+            });
+          },
+        });
+      }
     });
   </script>
 </body>

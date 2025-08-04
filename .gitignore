@@ -7,3 +7,6 @@ package-lock.json
 
 # Update script
 update_dashboard.sh
+
+# Generated Tailwind CSS
+public/tailwind.css
