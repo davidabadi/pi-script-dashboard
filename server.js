@@ -216,15 +216,19 @@ app.get("/", requiresAuth, (req, res) => {
     if (logPath && fs.existsSync(logPath)) {
       try {
         const stats = fs.statSync(logPath);
-        lastRun[name] = stats.mtime.toLocaleString();
+        lastRun[name] = stats.mtime.toLocaleString("en-US", { hour12: true });
         const content = fs.readFileSync(logPath, "utf8").trim();
         if (!content) {
           status[name] = null;
         } else {
-          const lines = content.split(/\r?\n/).slice(-10);
-          status[name] = lines.reverse().some((l) => l.includes("✅"))
-            ? "success"
-            : "failed";
+          const lastLine = content.split(/\r?\n/).pop();
+          if (lastLine.includes("✅")) {
+            status[name] = "success";
+          } else if (lastLine.includes("⚠️")) {
+            status[name] = "partial";
+          } else {
+            status[name] = "failed";
+          }
         }
       } catch (e) {
         status[name] = null;

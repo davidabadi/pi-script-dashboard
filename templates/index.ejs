@@ -45,14 +45,18 @@
           <% if (status[name]) { %>
             <% if (status[name] === 'running') { %>
               <span class="text-xs px-2 py-1 rounded bg-sky-200 text-sky-800">Running</span>
+            <% } else if (status[name] === 'success') { %>
+              <span class="text-xs px-2 py-1 rounded bg-green-200 text-green-800">Success</span>
+            <% } else if (status[name] === 'partial') { %>
+              <span class="text-xs px-2 py-1 rounded bg-yellow-200 text-yellow-800">Partial</span>
             <% } else { %>
-              <span class="text-xs px-2 py-1 rounded <%= status[name] === 'success' ? 'bg-green-200 text-green-800' : 'bg-rose-200 text-rose-800' %>">
-                <%= status[name] === 'success' ? 'Success' : 'Failed' %>
-              </span>
+              <span class="text-xs px-2 py-1 rounded bg-rose-200 text-rose-800">Failed</span>
             <% } %>
           <% } %>
         </h2>
+        <% if (status[name] !== 'running') { %>
         <p class="text-sm text-neutral-300 mb-2">Last run: <%= last_run[name] || 'Never' %></p>
+        <% } %>
         <div class="flex flex-wrap gap-2">
           <a href="/run/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700">▶ Run</a>
           <a href="/log/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-neutral-700 text-white rounded hover:bg-neutral-600">📄 View Log</a>
