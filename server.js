@@ -81,7 +81,19 @@ app.use(
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "templates"));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    setHeaders(res, filePath) {
+      if (path.basename(filePath) === "tailwind.css") {
+        // Cache aggressively and rely on the query parameter for busting
+        res.setHeader(
+          "Cache-Control",
+          "public, max-age=31536000, immutable"
+        );
+      }
+    },
+  })
+);
 
 const scriptsData = require("./scripts.json");
 
@@ -94,6 +106,15 @@ const LOGS = {};
 const CRON_TAGS = {};
 const LOCKS = {};
 const CRON_TIMERS = {};
+
+const cssFilePath = path.join(__dirname, "public", "tailwind.css");
+function getCacheBust() {
+  try {
+    return fs.statSync(cssFilePath).mtimeMs.toString();
+  } catch {
+    return Date.now().toString();
+  }
+}
 
 for (const name of scriptOrder) {
   const info = scriptsData[name];
@@ -137,7 +158,7 @@ function requiresAuth(req, res, next) {
 app.get("/login", (req, res) => {
   const messages = req.session.messages || [];
   req.session.messages = [];
-  res.render("login", { messages });
+  res.render("login", { messages, cacheBust: getCacheBust() });
 });
 
 app.post("/login", (req, res) => {
@@ -225,6 +246,7 @@ app.get("/", requiresAuth, (req, res) => {
     status,
     messages,
     last_run: lastRun,
+    cacheBust: getCacheBust(),
   });
 });
 
@@ -252,7 +274,7 @@ app.get("/log/:name", requiresAuth, (req, res) => {
   const logPath = LOGS[name];
   if (logPath && fs.existsSync(logPath)) {
     const content = fs.readFileSync(logPath, "utf8").split(/\r?\n/).slice(-100);
-    res.render("log", { name, content });
+    res.render("log", { name, content, cacheBust: getCacheBust() });
   } else {
     flash(req, "error", "❌ Log not found.");
     res.redirect("/");
@@ -271,7 +293,7 @@ app.get("/new", requiresAuth, (req, res) => {
     timer: "* * * * *",
     content: "",
   };
-  res.render("form", { isNew: true, data, messages });
+  res.render("form", { isNew: true, data, messages, cacheBust: getCacheBust() });
 });
 
 app.post("/new", requiresAuth, (req, res) => {
@@ -357,7 +379,7 @@ app.get("/edit/:name", requiresAuth, (req, res) => {
     timer: CRON_TIMERS[name] || "",
     content,
   };
-  res.render("form", { isNew: false, data, messages });
+  res.render("form", { isNew: false, data, messages, cacheBust: getCacheBust() });
 });
 
 app.post("/edit/:name", requiresAuth, (req, res) => {
