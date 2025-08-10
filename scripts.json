@@ -4,20 +4,20 @@
     "log": "/var/log/custom/conabadi_db_backup.log",
     "cron_tag": "backup_conabadi_db.sh",
     "lock": "/etc/conabadi_db_backup.lock",
-    "order": 1
+    "order": 0
   },
   "Unraid Backup": {
     "script": "/usr/local/bin/backup_unraid.sh",
     "log": "/var/log/custom/backup_unraid.log",
     "cron_tag": "backup_unraid.sh",
     "lock": "/etc/backup_unraid.lock",
-    "order": 2
+    "order": 1
   },
   "Update + Reboot": {
     "script": "/usr/local/bin/update_and_reboot.sh",
     "log": "/var/log/custom/update_and_reboot.log",
     "cron_tag": "update_and_reboot.sh",
     "lock": "/etc/update_and_reboot.lock",
-    "order": 0
+    "order": 2
   }
 }
