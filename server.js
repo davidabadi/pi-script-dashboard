@@ -344,7 +344,7 @@ app.post("/new", requiresAuth, (req, res) => {
   } catch (e) {
     cronContent = "";
   }
-  cronContent += `\n${timer} /bin/bash ${script} >> ${log} 2>&1 # ${cron_tag}\n`;
+  cronContent += `\n${timer} /bin/bash ${script} # ${cron_tag}\n`;
   try {
     safeExecSync("sudo crontab -", { input: cronContent });
   } catch (e) {
@@ -446,7 +446,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     cronLines = [];
   }
   const filtered = cronLines.filter((l) => l && !l.includes(oldTag));
-  filtered.push(`${timer} /bin/bash ${script} >> ${log} 2>&1 # ${cron_tag}`);
+  filtered.push(`${timer} /bin/bash ${script} # ${cron_tag}`);
   const newCron = filtered.join("\n") + "\n";
   try {
     safeExecSync("sudo crontab -", { input: newCron });
