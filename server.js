@@ -145,6 +145,52 @@ function loadCronTimers() {
 
 loadCronTimers();
 
+function cronToFrequency(timer) {
+  const t = (timer || "").trim();
+  if (!t) return "daily";
+  if (t.startsWith("@")) {
+    if (t === "@weekly") return "weekly";
+    if (t === "@monthly") return "monthly";
+    if (t === "@yearly" || t === "@annually") return "yearly";
+    return "daily";
+  }
+  const parts = t.split(/\s+/);
+  if (parts.length >= 5) {
+    const [, , dom, , dow] = parts;
+    if (dow && dow !== "*") return "weekly";
+    if (dom && dom !== "*") return "monthly";
+  }
+  return "daily";
+}
+
+function writeLogrotateConfig(logPath, timer) {
+  if (!isLinux || !logPath) return;
+  const freq = cronToFrequency(timer);
+  const base = path.basename(logPath).replace(/\.log$/, "");
+  const dest = `/etc/logrotate.d/${base}`;
+  const content = `${logPath} {\n    ${freq}\n    rotate 7\n    compress\n    missingok\n    notifempty\n    create 640 pi adm\n}\n`;
+  try {
+    safeSpawnSync("sudo", ["tee", dest], {
+      input: content,
+      encoding: "utf8",
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+  } catch (e) {
+    console.warn("⚠️ Failed to write logrotate config:", e.message);
+  }
+}
+
+function removeLogrotateConfig(logPath) {
+  if (!isLinux || !logPath) return;
+  const base = path.basename(logPath).replace(/\.log$/, "");
+  const dest = `/etc/logrotate.d/${base}`;
+  try {
+    safeSpawnSync("sudo", ["rm", "-f", dest]);
+  } catch (e) {
+    console.warn("⚠️ Failed to remove logrotate config:", e.message);
+  }
+}
+
 function flash(req, category, text) {
   if (!req.session.messages) req.session.messages = [];
   req.session.messages.push({ category, text });
@@ -352,6 +398,8 @@ app.post("/new", requiresAuth, (req, res) => {
     return res.redirect("/");
   }
 
+  writeLogrotateConfig(log, timer);
+
   loadCronTimers();
 
   flash(req, "success", `✅ Added script '${name}'.`);
@@ -391,6 +439,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   const { name, script, log, cron_tag, lock, timer, content } = req.body;
   const scriptPath = script;
   const oldTag = CRON_TAGS[oldName];
+  const oldLog = LOGS[oldName];
   if (!scriptPath) {
     flash(req, "error", "❌ Script path required.");
     return res.redirect("/");
@@ -454,6 +503,9 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     flash(req, "error", `❌ Failed to update cron: ${e.message}`);
     return res.redirect("/");
   }
+
+  removeLogrotateConfig(oldLog);
+  writeLogrotateConfig(log, timer);
 
   loadCronTimers();
 
