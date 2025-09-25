@@ -109,7 +109,7 @@
       const button = document.getElementById('update-button');
       button.disabled = true;
       button.setAttribute('aria-busy', 'true');
-      button.textContent = 'Updating…';
+      button.textContent = 'Updating...';
 
       try {
         const response = await fetch('/update', { method: 'POST' });
