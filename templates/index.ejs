@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Script Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Pi Script Dashboard</title>
   <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="shortcut icon" href="/favicon.ico" />
@@ -12,117 +13,196 @@
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
-<body class="bg-neutral-950 text-neutral-100 font-sans">
-  <div class="max-w-6xl mx-auto p-6">
-    <header class="bg-neutral-900 border border-neutral-700 rounded shadow mb-6 px-4 py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-      <h1 class="text-2xl font-bold">📋 Script Dashboard</h1>
-      <div class="flex gap-3">
-        <a href="/new" class="bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded text-center">➕ New Script</a>
-        <button id="update-button"
-          class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded"
-          onclick="runUpdate()" type="button">
-          🔄 Update Dashboard
-        </button>
-        <a href="/logout" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2 px-4 rounded text-center">
-          Logout
-        </a>
+<body class="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-white text-slate-900 transition-colors dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
+  <div class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-10">
+    <header class="flex flex-col gap-6 rounded-3xl bg-white/80 p-6 shadow-xl ring-1 ring-slate-200 backdrop-blur dark:bg-slate-900/70 dark:ring-slate-700 md:flex-row md:items-center md:justify-between">
+      <div class="flex items-center gap-4">
+        <span class="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-500 text-sm font-semibold uppercase tracking-widest text-white">PS</span>
+        <div class="space-y-1">
+          <p class="text-2xl font-semibold tracking-tight">Pi Script Dashboard</p>
+          <p class="text-sm text-slate-500 dark:text-slate-300">Monitor, orchestrate, and tune your automation in real time.</p>
+        </div>
+      </div>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <a href="/new" class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-600/30 transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">New script</a>
+        <button id="update-button" type="button" onclick="runUpdate()" class="inline-flex items-center justify-center rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-600/30 transition hover:bg-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500">Update dashboard</button>
+        <a href="/logout" class="inline-flex items-center justify-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:bg-rose-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">Logout</a>
       </div>
     </header>
 
     <% if (messages && messages.length) { %>
-      <% messages.forEach(msg => { %>
-        <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-neutral-800 text-green-300' : 'bg-neutral-800 text-rose-300' %>">
-          <%= msg.text %>
-        </div>
-      <% }) %>
+      <div class="space-y-3" role="status">
+        <% messages.forEach(msg => { %>
+          <div class="rounded-2xl border px-4 py-3 text-sm font-medium shadow-sm <%= msg.category === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200' : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200' %>"><%= msg.text %></div>
+        <% }) %>
+      </div>
     <% } %>
 
-    <div id="scripts-list" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-      <% scriptOrder.forEach(name => { %>
-      <div class="p-4 bg-neutral-900 border border-neutral-700 rounded shadow" data-name="<%= name %>">
-        <h2 class="text-xl font-semibold mb-3 flex justify-between items-center cursor-move select-none" draggable="true">
-          <%= name %>
-          <% if (status[name]) { %>
-            <% if (status[name] === 'running') { %>
-              <span class="text-xs px-2 py-1 rounded bg-sky-200 text-sky-800">Running</span>
-            <% } else if (status[name] === 'success') { %>
-              <span class="text-xs px-2 py-1 rounded bg-green-200 text-green-800">Success</span>
-            <% } else if (status[name] === 'partial') { %>
-              <span class="text-xs px-2 py-1 rounded bg-yellow-200 text-yellow-800">Partial</span>
-            <% } else { %>
-              <span class="text-xs px-2 py-1 rounded bg-rose-200 text-rose-800">Failed</span>
-            <% } %>
-          <% } %>
-        </h2>
-        <% if (status[name] !== 'running') { %>
-        <p class="text-sm text-neutral-300 mb-2">Last run: <%= last_run[name] || 'Never' %></p>
-        <% } %>
-        <div class="flex flex-wrap gap-2">
-          <a href="/run/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700">▶ Run</a>
-          <a href="/log/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-neutral-700 text-white rounded hover:bg-neutral-600">📄 View Log</a>
-          <a href="/toggle_cron/<%= encodeURIComponent(name) %>"
-             class="px-4 py-2 <%= paused[name] ? 'bg-teal-600 hover:bg-teal-700' : 'bg-yellow-600 hover:bg-yellow-700' %> text-white rounded">
-             <%= paused[name] ? '▶ Resume' : '⏸ Pause' %>
-          </a>
-          <a href="/edit/<%= encodeURIComponent(name) %>" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">✏ Edit</a>
+    <% const statusMap = {
+      running: { label: 'Running', classes: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200' },
+      success: { label: 'Success', classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200' },
+      partial: { label: 'Partial', classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200' },
+      failed: { label: 'Failed', classes: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200' }
+    }; %>
+
+    <section class="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70" aria-labelledby="scripts-heading">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 id="scripts-heading" class="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Script inventory</h2>
+          <p class="text-sm text-slate-500 dark:text-slate-300">Manage execution, review logs, and adjust scheduling with drag-and-drop ordering.</p>
         </div>
       </div>
-      <% }) %>
-    </div>
+      <div id="scripts-list" class="mt-6 grid gap-5 sm:grid-cols-2">
+        <% scriptOrder.forEach(name => { %>
+          <% const state = status[name]; %>
+          <% const meta = state ? (statusMap[state] || statusMap.failed) : null; %>
+          <article class="group flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm ring-1 ring-transparent transition-all hover:-translate-y-1 hover:shadow-xl dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-slate-600" data-name="<%= name %>">
+            <div class="flex items-start justify-between gap-3" data-drag-handle>
+              <div class="flex items-center gap-3">
+                <svg class="h-5 w-5 flex-none text-slate-300 transition group-hover:text-slate-400 dark:text-slate-600 dark:group-hover:text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <circle cx="5" cy="5" r="1.5"></circle>
+                  <circle cx="5" cy="10" r="1.5"></circle>
+                  <circle cx="5" cy="15" r="1.5"></circle>
+                  <circle cx="10" cy="5" r="1.5"></circle>
+                  <circle cx="10" cy="10" r="1.5"></circle>
+                  <circle cx="10" cy="15" r="1.5"></circle>
+                </svg>
+                <span class="text-base font-semibold text-slate-900 transition group-hover:text-slate-700 dark:text-slate-100 dark:group-hover:text-white"><%= name %></span>
+              </div>
+              <% if (meta) { %>
+                <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold <%= meta.classes %>"><%= meta.label %></span>
+              <% } %>
+            </div>
+            <div class="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+              <span>Last run: <strong class="font-semibold text-slate-900 dark:text-slate-100"><%= state === 'running' ? 'In progress' : (last_run[name] || 'Never') %></strong></span>
+              <% if (paused[name]) { %>
+                <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300">
+                  <span class="h-2 w-2 rounded-full bg-amber-400 dark:bg-amber-300"></span>
+                  Cron paused
+                </span>
+              <% } %>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <a href="/run/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">Run now</a>
+              <a href="/log/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">View log</a>
+              <a href="/toggle_cron/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"><%= paused[name] ? 'Resume cron' : 'Pause cron' %></a>
+              <a href="/edit/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Edit script</a>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    </section>
 
-    <details class="bg-neutral-900 border border-neutral-700 rounded shadow p-4">
-      <summary class="text-xl font-semibold cursor-pointer select-none">🕒 Current Cron Jobs</summary>
-      <div id="cron-editor" class="mt-2 border border-neutral-700 rounded" style="height:300px;"></div>
+    <details class="group overflow-hidden rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
+      <summary class="flex cursor-pointer items-center justify-between gap-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
+        <span>Cron schedule overview</span>
+        <svg class="h-5 w-5 flex-none text-slate-400 transition duration-200 group-open:rotate-180 dark:text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.192l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.24 4.53a.75.75 0 0 1-1.08 0l-4.24-4.53a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd" />
+        </svg>
+      </summary>
+      <div id="cron-editor" class="mt-5 h-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
     </details>
-
   </div>
 
   <script>
     async function runUpdate() {
-      const button = document.getElementById("update-button");
+      const button = document.getElementById('update-button');
       button.disabled = true;
-      button.innerText = "🔄 Updating...";
+      button.setAttribute('aria-busy', 'true');
+      button.textContent = 'Updating�';
 
-      await fetch("/update", { method: "POST" });
+      try {
+        const response = await fetch('/update', { method: 'POST' });
+        if (!response.ok) throw new Error('Update request failed');
+      } catch (error) {
+        console.error('Update trigger failed', error);
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        button.textContent = 'Try again';
+        return;
+      }
 
-      const checkInterval = setInterval(async () => {
-        const res = await fetch("/update-status");
-        const data = await res.json();
-        if (!data.updating) {
-          clearInterval(checkInterval);
-          button.innerText = "✅ Updated – Click to reload";
-          button.disabled = false;
-          button.onclick = () => location.reload();
+      const finish = () => {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        button.textContent = 'Reload to apply';
+        button.onclick = () => window.location.reload();
+      };
+
+      const checkStatus = async () => {
+        try {
+          const res = await fetch('/update-status');
+          if (!res.ok) throw new Error('Status request failed');
+          const data = await res.json();
+          if (!data.updating) {
+            finish();
+            return true;
+          }
+        } catch (error) {
+          console.error('Update status check failed', error);
+          finish();
+          return true;
+        }
+        return false;
+      };
+
+      if (await checkStatus()) {
+        return;
+      }
+
+      const interval = setInterval(async () => {
+        if (await checkStatus()) {
+          clearInterval(interval);
         }
       }, 2000);
     }
+
     require.config({
       paths: {
         vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs',
         sortablejs: 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min'
       }
     });
+
     require(['vs/editor/editor.main', 'sortablejs'], function (_, Sortable) {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      const currentTheme = () => (mql.matches ? 'vs-dark' : 'vs');
       monaco.editor.create(document.getElementById('cron-editor'), {
         value: <%- JSON.stringify(cron_output) %>,
         language: 'shell',
         readOnly: true,
         automaticLayout: true,
-        theme: 'vs-dark',
+        theme: currentTheme(),
+        minimap: { enabled: false }
       });
-      const el = document.getElementById('scripts-list');
-      if (el) {
-        Sortable.create(el, {
-          animation: 150,
-          handle: 'h2',
-          onEnd: async () => {
-            const order = Array.from(el.children).map((c) => c.dataset.name);
-            await fetch('/reorder', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ order }),
-            });
-          },
+
+      const applyTheme = () => monaco.editor.setTheme(currentTheme());
+      applyTheme();
+      if (mql.addEventListener) {
+        mql.addEventListener('change', applyTheme);
+      } else if (mql.addListener) {
+        mql.addListener(applyTheme);
+      }
+
+      const list = document.getElementById('scripts-list');
+      if (list) {
+        Sortable.create(list, {
+          animation: 200,
+          handle: '[data-drag-handle]',
+          onStart: (evt) => evt.item.classList.add('opacity-60'),
+          onEnd: async (evt) => {
+            evt.item.classList.remove('opacity-60');
+            const order = Array.from(list.children).map((node) => node.dataset.name);
+            try {
+              await fetch('/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order })
+              });
+            } catch (error) {
+              console.error('Failed to persist script order', error);
+            }
+          }
         });
       }
     });

@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title><%= isNew ? 'Add Script' : 'Edit Script' %></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title><%= isNew ? 'Add Script' : 'Edit Script' %> � Pi Script Dashboard</title>
   <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="shortcut icon" href="/favicon.ico" />
@@ -12,58 +13,98 @@
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
-<body class="bg-neutral-950 text-neutral-100 font-sans p-4">
-  <div class="bg-neutral-900 border border-neutral-700 p-4 rounded shadow flex flex-col">
-    <h1 class="text-xl font-bold mb-4"><%= isNew ? '➕ Add Script' : '✏️ Edit Script' %></h1>
+<body class="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-white text-slate-900 transition-colors dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
+  <div class="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-10">
+    <header class="flex flex-col gap-6 rounded-3xl bg-white/80 p-6 shadow-xl ring-1 ring-slate-200 backdrop-blur dark:bg-slate-900/70 dark:ring-slate-700 md:flex-row md:items-center md:justify-between">
+      <div class="flex items-center gap-4">
+        <span class="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-semibold uppercase tracking-widest text-white">PS</span>
+        <div class="space-y-1">
+          <p class="text-2xl font-semibold tracking-tight"><%= isNew ? 'Script composer' : 'Script editor' %></p>
+          <p class="text-sm text-slate-500 dark:text-slate-300"><%= isNew ? 'Register a new automation script and schedule.' : 'Update script details, schedule, and content.' %></p>
+        </div>
+      </div>
+      <div class="flex items-center justify-start md:justify-end">
+        <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Back to dashboard</a>
+      </div>
+    </header>
+
     <% if (messages && messages.length) { %>
-      <% messages.forEach(msg => { %>
-        <div class="mb-4 p-3 rounded <%= msg.category === 'success' ? 'bg-neutral-800 text-green-300' : 'bg-neutral-800 text-rose-300' %>"><%= msg.text %></div>
-      <% }) %>
+      <div class="space-y-3" role="status">
+        <% messages.forEach(msg => { %>
+          <div class="rounded-2xl border px-4 py-3 text-sm font-medium shadow-sm <%= msg.category === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200' : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200' %>"><%= msg.text %></div>
+        <% }) %>
+      </div>
     <% } %>
-    <form method="POST" class="flex flex-col">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+
+    <section class="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70" aria-labelledby="script-form-heading">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <label class="block mb-1 text-sm font-semibold">Script Name</label>
-          <input type="text" name="name" value="<%= data.name %>" required class="w-full px-3 py-1 border border-neutral-700 rounded bg-neutral-800" />
-        </div>
-        <div>
-          <label class="block mb-1 text-sm font-semibold">Script Full Path</label>
-          <input type="text" name="script" value="<%= data.script %>" required class="w-full px-3 py-1 border border-neutral-700 rounded bg-neutral-800" />
-        </div>
-        <div>
-          <label class="block mb-1 text-sm font-semibold">Log File</label>
-          <input type="text" name="log" value="<%= data.log %>" required class="w-full px-3 py-1 border border-neutral-700 rounded bg-neutral-800" />
-        </div>
-        <div>
-          <label class="block mb-1 text-sm font-semibold">Cron Job Tag</label>
-          <input type="text" name="cron_tag" value="<%= data.cron_tag %>" required class="w-full px-3 py-1 border border-neutral-700 rounded bg-neutral-800" />
-        </div>
-        <div>
-          <label class="block mb-1 text-sm font-semibold">Lock File</label>
-          <input type="text" name="lock" value="<%= data.lock %>" required class="w-full px-3 py-1 border border-neutral-700 rounded bg-neutral-800" />
-        </div>
-        <div>
-          <label class="block mb-1 text-sm font-semibold">Cron Job Timer</label>
-          <input type="text" name="timer" value="<%= data.timer %>" required class="w-full px-3 py-1 border border-neutral-700 rounded bg-neutral-800" />
+          <h2 id="script-form-heading" class="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100"><%= isNew ? 'Script metadata' : 'Update script details' %></h2>
+          <p class="text-sm text-slate-500 dark:text-slate-300">Provide executable paths, log locations, cron configuration, and the script body.</p>
         </div>
       </div>
-      <input type="hidden" name="content" id="hidden-content" />
-      <div id="editor" class="border border-neutral-700 rounded mb-4 w-full" style="height:90vh;"></div>
-      <div class="flex gap-3">
-        <button type="submit" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded">Save</button>
-        <a href="/" class="px-4 py-2 bg-neutral-700 rounded hover:bg-neutral-600">Cancel</a>
-      </div>
-    </form>
+
+      <form method="POST" class="mt-6 space-y-6">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="space-y-2">
+            <label for="name" class="text-sm font-medium text-slate-600 dark:text-slate-300">Script name</label>
+            <input id="name" type="text" name="name" value="<%= data.name %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          </div>
+          <div class="space-y-2">
+            <label for="script" class="text-sm font-medium text-slate-600 dark:text-slate-300">Script full path</label>
+            <input id="script" type="text" name="script" value="<%= data.script %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          </div>
+          <div class="space-y-2">
+            <label for="log" class="text-sm font-medium text-slate-600 dark:text-slate-300">Log file path</label>
+            <input id="log" type="text" name="log" value="<%= data.log %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          </div>
+          <div class="space-y-2">
+            <label for="cron_tag" class="text-sm font-medium text-slate-600 dark:text-slate-300">Cron job tag</label>
+            <input id="cron_tag" type="text" name="cron_tag" value="<%= data.cron_tag %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          </div>
+          <div class="space-y-2">
+            <label for="lock" class="text-sm font-medium text-slate-600 dark:text-slate-300">Lock file path</label>
+            <input id="lock" type="text" name="lock" value="<%= data.lock %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          </div>
+          <div class="space-y-2">
+            <label for="timer" class="text-sm font-medium text-slate-600 dark:text-slate-300">Cron schedule</label>
+            <input id="timer" type="text" name="timer" value="<%= data.timer %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          </div>
+        </div>
+
+        <input type="hidden" name="content" id="hidden-content" />
+        <div id="editor" class="h-[60vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Save changes</button>
+          <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Cancel</a>
+        </div>
+      </form>
+    </section>
   </div>
+
   <script>
     require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
     require(['vs/editor/editor.main'], function () {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      const currentTheme = () => (mql.matches ? 'vs-dark' : 'vs');
       const editor = monaco.editor.create(document.getElementById('editor'), {
         value: <%- JSON.stringify(data.content) %>,
         language: 'shell',
         automaticLayout: true,
-        theme: 'vs-dark',
+        theme: currentTheme(),
+        minimap: { enabled: false },
+        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'monospace"
       });
+
+      const applyTheme = () => monaco.editor.setTheme(currentTheme());
+      applyTheme();
+      if (mql.addEventListener) {
+        mql.addEventListener('change', applyTheme);
+      } else if (mql.addListener) {
+        mql.addListener(applyTheme);
+      }
+
       document.querySelector('form').addEventListener('submit', () => {
         document.getElementById('hidden-content').value = editor.getValue();
       });
