@@ -13,13 +13,6 @@
     "lock": "/etc/update_and_reboot.lock",
     "order": 4
   },
-  "Unraid Backup": {
-    "script": "/usr/local/bin/backup_unraid.sh",
-    "log": "/var/log/custom/backup_unraid.log",
-    "cron_tag": "backup_unraid.sh",
-    "lock": "/etc/backup_unraid.lock",
-    "order": 3
-  },
   "Lazo Panama MySQL Backup": {
     "script": "/usr/local/bin/backup_lazopanama_db.sh",
     "log": "/var/log/custom/lazopanama_db_backup.log",
@@ -33,5 +26,12 @@
     "cron_tag": "backup_unraid_postgresql_db.sh",
     "lock": "/etc/unraid_postgresql_db_backup.lock",
     "order": 2
+  },
+  "Unraid Backup": {
+    "script": "/usr/local/bin/backup_unraid.sh",
+    "log": "/var/log/custom/backup_unraid.log",
+    "cron_tag": "backup_unraid.sh",
+    "lock": "/etc/backup_unraid.lock",
+    "order": 3
   }
 }
