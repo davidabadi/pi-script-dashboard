@@ -4,14 +4,14 @@
     "log": "/var/log/custom/conabadi_db_backup.log",
     "cron_tag": "backup_conabadi_db.sh",
     "lock": "/etc/conabadi_db_backup.lock",
-    "order": 0
+    "order": 1
   },
   "Lazo Panama MySQL Backup": {
     "script": "/usr/local/bin/backup_lazopanama_db.sh",
     "log": "/var/log/custom/lazopanama_db_backup.log",
     "cron_tag": "backup_lazopanama_db.sh",
     "lock": "/etc/lazopanama_db_backup.lock",
-    "order": 1
+    "order": 0
   },
   "Unraid PostgreSQL Backup": {
     "script": "/usr/local/bin/backup_unraid_postgresql_db.sh",
