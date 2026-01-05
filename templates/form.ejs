@@ -76,6 +76,9 @@
         <div id="editor" class="h-[60vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <% if (!isNew) { %>
+            <button type="button" id="copy-script" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Copy script</button>
+          <% } %>
           <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Save changes</button>
           <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Cancel</a>
         </div>
@@ -105,8 +108,84 @@
         mql.addListener(applyTheme);
       }
 
-      document.querySelector('form').addEventListener('submit', () => {
+      const form = document.querySelector('form');
+      const copyButton = document.getElementById('copy-script');
+      const fields = [
+        document.getElementById('name'),
+        document.getElementById('script'),
+        document.getElementById('log'),
+        document.getElementById('cron_tag'),
+        document.getElementById('lock'),
+        document.getElementById('timer')
+      ];
+      const getFormSnapshot = () => ({
+        name: fields[0].value,
+        script: fields[1].value,
+        log: fields[2].value,
+        cron_tag: fields[3].value,
+        lock: fields[4].value,
+        timer: fields[5].value,
+        content: editor.getValue()
+      });
+      const initialSnapshot = getFormSnapshot();
+      let isDirty = false;
+      const updateDirtyState = () => {
+        const currentSnapshot = getFormSnapshot();
+        isDirty = Object.keys(initialSnapshot).some((key) => currentSnapshot[key] !== initialSnapshot[key]);
+      };
+
+      fields.forEach((field) => field.addEventListener('input', updateDirtyState));
+      editor.onDidChangeModelContent(updateDirtyState);
+
+      window.addEventListener('beforeunload', (event) => {
+        if (!isDirty) {
+          return;
+        }
+        event.preventDefault();
+        event.returnValue = 'You have unsaved changes.';
+      });
+
+      if (copyButton) {
+        const resetCopyLabel = () => {
+          copyButton.textContent = 'Copy script';
+          copyButton.disabled = false;
+        };
+        copyButton.addEventListener('click', () => {
+          const content = editor.getValue();
+          copyButton.textContent = 'Copying...';
+          copyButton.disabled = true;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(content).then(() => {
+              copyButton.textContent = 'Copied!';
+              setTimeout(resetCopyLabel, 2000);
+            }).catch(() => {
+              resetCopyLabel();
+              window.alert('Unable to copy script to clipboard.');
+            });
+            return;
+          }
+
+          const textarea = document.createElement('textarea');
+          textarea.value = content;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          const copied = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          if (copied) {
+            copyButton.textContent = 'Copied!';
+            setTimeout(resetCopyLabel, 2000);
+          } else {
+            resetCopyLabel();
+            window.alert('Unable to copy script to clipboard.');
+          }
+        });
+      }
+
+      form.addEventListener('submit', () => {
         document.getElementById('hidden-content').value = editor.getValue();
+        isDirty = false;
       });
     });
   </script>
