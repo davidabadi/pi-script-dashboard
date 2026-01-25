@@ -76,6 +76,7 @@
         <div id="editor" class="h-[60vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <button type="button" id="clear-script" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Clear script</button>
           <% if (!isNew) { %>
             <button type="button" id="copy-script" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Copy script</button>
           <% } %>
@@ -109,6 +110,7 @@
       }
 
       const form = document.querySelector('form');
+      const clearButton = document.getElementById('clear-script');
       const copyButton = document.getElementById('copy-script');
       const fields = [
         document.getElementById('name'),
@@ -144,6 +146,20 @@
         event.preventDefault();
         event.returnValue = 'You have unsaved changes.';
       });
+
+      if (clearButton) {
+        const resetClearLabel = () => {
+          clearButton.textContent = 'Clear script';
+          clearButton.disabled = false;
+        };
+        clearButton.addEventListener('click', () => {
+          editor.setValue('');
+          editor.focus();
+          clearButton.textContent = 'Cleared!';
+          clearButton.disabled = true;
+          setTimeout(resetClearLabel, 2000);
+        });
+      }
 
       if (copyButton) {
         const resetCopyLabel = () => {
