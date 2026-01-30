@@ -59,10 +59,6 @@
             <input id="log" type="text" name="log" value="<%= data.log %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
           </div>
           <div class="space-y-2">
-            <label for="cron_tag" class="text-sm font-medium text-slate-600 dark:text-slate-300">Cron job tag</label>
-            <input id="cron_tag" type="text" name="cron_tag" value="<%= data.cron_tag %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
-          </div>
-          <div class="space-y-2">
             <label for="lock" class="text-sm font-medium text-slate-600 dark:text-slate-300">Lock file path</label>
             <input id="lock" type="text" name="lock" value="<%= data.lock %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
           </div>
@@ -151,7 +147,6 @@
         document.getElementById('name'),
         document.getElementById('script'),
         document.getElementById('log'),
-        document.getElementById('cron_tag'),
         document.getElementById('lock'),
         document.getElementById('timer'),
         configPathField
@@ -160,11 +155,10 @@
         name: fields[0].value,
         script: fields[1].value,
         log: fields[2].value,
-        cron_tag: fields[3].value,
-        lock: fields[4].value,
-        timer: fields[5].value,
+        lock: fields[3].value,
+        timer: fields[4].value,
         content: editor.getValue(),
-        config_path: fields[6].value,
+        config_path: fields[5].value,
         config_content: configEditor.getValue(),
         config_enabled: configEnabledField.value
       });

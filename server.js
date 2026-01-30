@@ -42,6 +42,39 @@ function hasGitIdentity() {
 }
 const lockFile = "/tmp/dashboard-update.lock";
 
+function commitScriptsUpdate(message, extraPaths = []) {
+  const files = ["scripts.json", ...extraPaths].filter(Boolean);
+  try {
+    safeExecSync(`git add ${files.map((file) => `"${file}"`).join(" ")}`);
+  } catch (e) {
+    console.warn("⚠️ Failed to stage scripts.json update:", e.message);
+    return;
+  }
+
+  if (!hasGitIdentity()) {
+    console.warn("⚠️ Git user.name/email not set; skipping commit.");
+    return;
+  }
+
+  try {
+    safeExecSync(`git commit -m "${message.replace(/"/g, '\\"')}"`);
+  } catch (e) {
+    console.warn("⚠️ Failed to commit scripts.json update:", e.message);
+    return;
+  }
+
+  try {
+    const remotes = safeExecSync("git remote").toString().trim();
+    if (remotes) {
+      safeExecSync("git push");
+    } else {
+      console.warn("⚠️ No git remote configured; skipping push.");
+    }
+  } catch (e) {
+    console.warn("⚠️ Failed to push scripts.json update:", e.message);
+  }
+}
+
 if (fs.existsSync(lockFile)) {
   try {
     fs.unlinkSync(lockFile);
@@ -104,6 +137,7 @@ let scriptOrder = Object.keys(scriptsData).sort(
 const SCRIPTS = {};
 const LOGS = {};
 const CRON_TAGS = {};
+const CRON_KEYS = {};
 const LOCKS = {};
 const CONFIG_PATHS = {};
 const CRON_TIMERS = {};
@@ -124,6 +158,21 @@ for (const name of scriptOrder) {
   CRON_TAGS[name] = info.cron_tag;
   LOCKS[name] = info.lock;
   CONFIG_PATHS[name] = info.config_path || "";
+  CRON_KEYS[name] = buildCronKey(name, info.cron_tag, info.config_path);
+}
+
+function buildCronKey(name, cronTag, configPath) {
+  const base = (cronTag || name || "").trim();
+  const suffix = (configPath || "").trim() ? path.basename(configPath.trim()) : "";
+  return suffix ? `${base}:${suffix}` : base;
+}
+
+function buildCronCommand(script, configPath) {
+  const commandParts = ["/bin/bash", script];
+  if (configPath) {
+    commandParts.push(configPath);
+  }
+  return commandParts.join(" ");
 }
 
 function loadCronTimers() {
@@ -133,7 +182,7 @@ function loadCronTimers() {
   } catch (e) {
     lines = [];
   }
-  for (const [name, tag] of Object.entries(CRON_TAGS)) {
+  for (const [name, tag] of Object.entries(CRON_KEYS)) {
     const line = lines.find((l) => l.includes(tag));
     if (line) {
       const cleaned = line.replace(/^#\s*/, "").trim();
@@ -249,7 +298,7 @@ app.get("/", requiresAuth, (req, res) => {
   const paused = {};
   const status = {};
   const lastRun = {};
-  for (const [name, tag] of Object.entries(CRON_TAGS)) {
+  for (const [name, tag] of Object.entries(CRON_KEYS)) {
     paused[name] = cronLines.some(
       (l) => l.includes(tag) && l.trim().startsWith("#")
     );
@@ -307,7 +356,12 @@ app.get("/run/:name", requiresAuth, (req, res) => {
   const script = SCRIPTS[name];
   if (script) {
     try {
-      safeSpawn("sudo", ["/bin/bash", script], {
+      const configPath = CONFIG_PATHS[name];
+      const args = ["/bin/bash", script];
+      if (configPath) {
+        args.push(configPath);
+      }
+      safeSpawn("sudo", args, {
         detached: true,
         stdio: "ignore",
       }).unref();
@@ -340,7 +394,6 @@ app.get("/new", requiresAuth, (req, res) => {
     name: "",
     script: "/usr/local/bin/",
     log: "/var/log/custom/",
-    cron_tag: "",
     lock: "/etc/",
     timer: "* * * * *",
     content: "",
@@ -355,7 +408,6 @@ app.post("/new", requiresAuth, (req, res) => {
     name,
     script,
     log,
-    cron_tag,
     lock,
     timer,
     content,
@@ -376,9 +428,13 @@ app.post("/new", requiresAuth, (req, res) => {
     return res.redirect("/");
   }
 
-  const configEnabled = config_enabled === "true" || config_enabled === "on";
+  const rawConfigPath = (config_path || "").trim();
+  const configEnabled =
+    config_enabled === "true" || config_enabled === "on" || Boolean(rawConfigPath);
   const normalizedConfig = (config_content || "").replace(/\r/g, "");
-  const configPath = configEnabled ? (config_path || "").trim() : "";
+  const configPath = configEnabled ? rawConfigPath : "";
+  const cronTagValue = (name || "").trim();
+  const cronKey = buildCronKey(name, cronTagValue, configPath);
   if (configEnabled && configPath) {
     try {
       safeSpawnSync("sudo", ["tee", configPath], {
@@ -402,21 +458,20 @@ app.post("/new", requiresAuth, (req, res) => {
   const nextOrder =
     Math.max(-1, ...Object.values(data).map((d) => d.order ?? 0)) + 1;
   const order = existing ? existing.order ?? scriptOrder.indexOf(name) : nextOrder;
-  data[name] = { script, log, cron_tag, lock, order };
+  data[name] = { script, log, cron_tag: cronTagValue, lock, order };
   if (configPath) {
     data[name].config_path = configPath;
   }
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
-    safeSpawnSync("git", ["add", "scripts.json", script]);
-    safeSpawnSync("git", ["commit", "-m", `Add script ${name}`]);
-    safeSpawnSync("git", ["push"]);
+    commitScriptsUpdate(`Add script ${name}`, [script, configPath]);
   } catch (e) {
-    console.warn("Git commit/push failed:", e.message);
+    console.warn("⚠️ Failed to save scripts.json:", e.message);
   }
   SCRIPTS[name] = script;
   LOGS[name] = log;
-  CRON_TAGS[name] = cron_tag;
+  CRON_TAGS[name] = cronTagValue;
+  CRON_KEYS[name] = cronKey;
   LOCKS[name] = lock;
   CONFIG_PATHS[name] = configPath;
   if (!existing) {
@@ -430,11 +485,14 @@ app.post("/new", requiresAuth, (req, res) => {
     cronContent = "";
   }
   if (existing && existing.cron_tag) {
-    const lines = cronContent.split(/\r?\n/).filter((line) => line && !line.includes(existing.cron_tag));
-    lines.push(`${timer} /bin/bash ${script} # ${cron_tag}`);
+    const oldKey = buildCronKey(name, existing.cron_tag, existing.config_path);
+    const lines = cronContent
+      .split(/\r?\n/)
+      .filter((line) => line && !line.includes(oldKey));
+    lines.push(`${timer} ${buildCronCommand(script, configPath)} # ${cronKey}`);
     cronContent = lines.join("\n") + "\n";
   } else {
-    cronContent += `\n${timer} /bin/bash ${script} # ${cron_tag}\n`;
+    cronContent += `\n${timer} ${buildCronCommand(script, configPath)} # ${cronKey}\n`;
   }
   try {
     safeExecSync("sudo crontab -", { input: cronContent });
@@ -474,7 +532,6 @@ app.get("/edit/:name", requiresAuth, (req, res) => {
     name,
     script: scriptPath,
     log: LOGS[name] || "",
-    cron_tag: CRON_TAGS[name] || "",
     lock: LOCKS[name] || "",
     timer: CRON_TIMERS[name] || "",
     content,
@@ -498,7 +555,6 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     name,
     script,
     log,
-    cron_tag,
     lock,
     timer,
     content,
@@ -507,7 +563,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     config_enabled,
   } = req.body;
   const scriptPath = script;
-  const oldTag = CRON_TAGS[oldName];
+  const oldKey = CRON_KEYS[oldName];
   const oldLog = LOGS[oldName];
   const oldConfigPath = CONFIG_PATHS[oldName];
   if (!scriptPath) {
@@ -527,9 +583,13 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     return res.redirect("/");
   }
 
-  const configEnabled = config_enabled === "true" || config_enabled === "on";
+  const rawConfigPath = (config_path || "").trim();
+  const configEnabled =
+    config_enabled === "true" || config_enabled === "on" || Boolean(rawConfigPath);
   const normalizedConfig = (config_content || "").replace(/\r/g, "");
-  const configPath = configEnabled ? (config_path || "").trim() : "";
+  const configPath = configEnabled ? rawConfigPath : "";
+  const cronTagValue = (name || "").trim();
+  const cronKey = buildCronKey(name, cronTagValue, configPath);
   if (configEnabled && configPath) {
     try {
       safeSpawnSync("sudo", ["tee", configPath], {
@@ -551,29 +611,29 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   }
   const oldOrder = data[oldName] ? data[oldName].order : scriptOrder.indexOf(oldName);
   delete data[oldName];
-  data[name] = { script, log, cron_tag, lock, order: oldOrder };
+  data[name] = { script, log, cron_tag: cronTagValue, lock, order: oldOrder };
   if (configPath) {
     data[name].config_path = configPath;
   }
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
-    safeSpawnSync("git", ["add", "scripts.json", scriptPath]);
-    safeSpawnSync("git", ["commit", "-m", `Update script ${name}`]);
-    safeSpawnSync("git", ["push"]);
+    commitScriptsUpdate(`Update script ${name}`, [scriptPath, configPath]);
   } catch (e) {
-    console.warn("Git commit/push failed:", e.message);
+    console.warn("⚠️ Failed to save scripts.json:", e.message);
   }
 
   delete SCRIPTS[oldName];
   delete LOGS[oldName];
   delete CRON_TAGS[oldName];
+  delete CRON_KEYS[oldName];
   delete LOCKS[oldName];
   delete CRON_TIMERS[oldName];
   delete CONFIG_PATHS[oldName];
 
   SCRIPTS[name] = script;
   LOGS[name] = log;
-  CRON_TAGS[name] = cron_tag;
+  CRON_TAGS[name] = cronTagValue;
+  CRON_KEYS[name] = cronKey;
   LOCKS[name] = lock;
   CONFIG_PATHS[name] = configPath;
   const idx = scriptOrder.indexOf(oldName);
@@ -585,8 +645,8 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   } catch (e) {
     cronLines = [];
   }
-  const filtered = cronLines.filter((l) => l && !l.includes(oldTag));
-  filtered.push(`${timer} /bin/bash ${script} # ${cron_tag}`);
+  const filtered = cronLines.filter((l) => l && !l.includes(oldKey));
+  filtered.push(`${timer} ${buildCronCommand(script, configPath)} # ${cronKey}`);
   const newCron = filtered.join("\n") + "\n";
   try {
     safeExecSync("sudo crontab -", { input: newCron });
@@ -609,7 +669,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
 
 app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
   const name = req.params.name;
-  const tag = CRON_TAGS[name];
+  const tag = CRON_KEYS[name];
   if (!tag) {
     flash(req, "error", "❌ Unknown script tag.");
     return res.redirect("/");
@@ -665,32 +725,7 @@ app.post("/reorder", requiresAuth, (req, res) => {
     return res.status(500).json({ error: "Failed to save order" });
   }
   scriptOrder = order;
-
-  let commitOk = false;
-  if (hasGitIdentity()) {
-    try {
-      safeExecSync("git add scripts.json");
-      safeExecSync('git commit -m "chore: update script order"');
-      commitOk = true;
-    } catch (e) {
-      console.warn("⚠️ Failed to commit updated order:", e.message);
-    }
-  } else {
-    console.warn("⚠️ Git user.name/email not set; skipping commit.");
-  }
-
-  if (commitOk) {
-    try {
-      const remotes = safeExecSync("git remote").toString().trim();
-      if (remotes) {
-        safeExecSync("git push");
-      } else {
-        console.warn("⚠️ No git remote configured; skipping push.");
-      }
-    } catch (e) {
-      console.warn("⚠️ Failed to push updated order:", e.message);
-    }
-  }
+  commitScriptsUpdate("chore: update script order");
 
   res.json({ success: true });
 });
