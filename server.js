@@ -31,6 +31,55 @@ function safeSpawn(cmd, args, options = {}) {
   return spawn(cmd, args, options);
 }
 
+function formatSpawnError(result, fallback) {
+  if (result && result.error) {
+    return result.error.message;
+  }
+  const stderr = result && result.stderr ? result.stderr.toString().trim() : "";
+  return stderr || fallback;
+}
+
+function ensureParentDir(filePath) {
+  const dir = path.dirname(filePath);
+  if (!dir || dir === ".") return;
+  if (!isLinux) {
+    fs.mkdirSync(dir, { recursive: true });
+    return;
+  }
+  const result = safeSpawnSync("sudo", ["mkdir", "-p", dir], {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  if (result.status && result.status !== 0) {
+    throw new Error(formatSpawnError(result, "Failed to create directory."));
+  }
+}
+
+function writeFileWithSudo(filePath, content, label) {
+  ensureParentDir(filePath);
+  if (!isLinux) {
+    fs.writeFileSync(filePath, content, "utf8");
+    return;
+  }
+  const result = safeSpawnSync("sudo", ["tee", filePath], {
+    input: content,
+    encoding: "utf8",
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+  if (result.status && result.status !== 0) {
+    throw new Error(`${label}: ${formatSpawnError(result, "Write failed.")}`);
+  }
+}
+
+function runSudoCommand(args, label) {
+  if (!isLinux) return;
+  const result = safeSpawnSync("sudo", args, {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  if (result.status && result.status !== 0) {
+    throw new Error(`${label}: ${formatSpawnError(result, "Command failed.")}`);
+  }
+}
+
 function hasGitIdentity() {
   try {
     const name = safeExecSync("git config user.name").toString().trim();
@@ -417,12 +466,8 @@ app.post("/new", requiresAuth, (req, res) => {
   } = req.body;
   const normalized = (content || "").replace(/\r/g, "");
   try {
-    safeSpawnSync("sudo", ["tee", script], {
-      input: normalized,
-      encoding: "utf8",
-      stdio: ["pipe", "ignore", "pipe"],
-    });
-    safeSpawnSync("sudo", ["chmod", "+x", script]);
+    writeFileWithSudo(script, normalized, "Failed to write script");
+    runSudoCommand(["chmod", "+x", script], "Failed to chmod script");
   } catch (e) {
     flash(req, "error", `❌ Failed to write script: ${e.message}`);
     return res.redirect("/");
@@ -431,17 +476,17 @@ app.post("/new", requiresAuth, (req, res) => {
   const rawConfigPath = (config_path || "").trim();
   const configEnabled =
     config_enabled === "true" || config_enabled === "on" || Boolean(rawConfigPath);
+  if (configEnabled && !rawConfigPath) {
+    flash(req, "error", "❌ Config file path required.");
+    return res.redirect("/");
+  }
   const normalizedConfig = (config_content || "").replace(/\r/g, "");
   const configPath = configEnabled ? rawConfigPath : "";
   const cronTagValue = (name || "").trim();
   const cronKey = buildCronKey(name, cronTagValue, configPath);
   if (configEnabled && configPath) {
     try {
-      safeSpawnSync("sudo", ["tee", configPath], {
-        input: normalizedConfig,
-        encoding: "utf8",
-        stdio: ["pipe", "ignore", "pipe"],
-      });
+      writeFileWithSudo(configPath, normalizedConfig, "Failed to write config file");
     } catch (e) {
       flash(req, "error", `❌ Failed to write config file: ${e.message}`);
       return res.redirect("/");
@@ -572,12 +617,8 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   }
   const normalized = (content || "").replace(/\r/g, "");
   try {
-    safeSpawnSync("sudo", ["tee", scriptPath], {
-      input: normalized,
-      encoding: "utf8",
-      stdio: ["pipe", "ignore", "pipe"],
-    });
-    safeSpawnSync("sudo", ["chmod", "+x", scriptPath]);
+    writeFileWithSudo(scriptPath, normalized, "Failed to write script");
+    runSudoCommand(["chmod", "+x", scriptPath], "Failed to chmod script");
   } catch (e) {
     flash(req, "error", `❌ Failed to write script: ${e.message}`);
     return res.redirect("/");
@@ -586,17 +627,17 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   const rawConfigPath = (config_path || "").trim();
   const configEnabled =
     config_enabled === "true" || config_enabled === "on" || Boolean(rawConfigPath);
+  if (configEnabled && !rawConfigPath) {
+    flash(req, "error", "❌ Config file path required.");
+    return res.redirect("/");
+  }
   const normalizedConfig = (config_content || "").replace(/\r/g, "");
   const configPath = configEnabled ? rawConfigPath : "";
   const cronTagValue = (name || "").trim();
   const cronKey = buildCronKey(name, cronTagValue, configPath);
   if (configEnabled && configPath) {
     try {
-      safeSpawnSync("sudo", ["tee", configPath], {
-        input: normalizedConfig,
-        encoding: "utf8",
-        stdio: ["pipe", "ignore", "pipe"],
-      });
+      writeFileWithSudo(configPath, normalizedConfig, "Failed to write config file");
     } catch (e) {
       flash(req, "error", `❌ Failed to write config file: ${e.message}`);
       return res.redirect("/");
