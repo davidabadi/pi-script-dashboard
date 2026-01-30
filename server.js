@@ -105,6 +105,7 @@ const SCRIPTS = {};
 const LOGS = {};
 const CRON_TAGS = {};
 const LOCKS = {};
+const CONFIG_PATHS = {};
 const CRON_TIMERS = {};
 
 const cssFilePath = path.join(__dirname, "public", "tailwind.css");
@@ -122,6 +123,7 @@ for (const name of scriptOrder) {
   LOGS[name] = info.log;
   CRON_TAGS[name] = info.cron_tag;
   LOCKS[name] = info.lock;
+  CONFIG_PATHS[name] = info.config_path || "";
 }
 
 function loadCronTimers() {
@@ -342,12 +344,25 @@ app.get("/new", requiresAuth, (req, res) => {
     lock: "/etc/",
     timer: "* * * * *",
     content: "",
+    config_path: "",
+    config_content: "",
   };
   res.render("form", { isNew: true, data, messages, cacheBust: getCacheBust() });
 });
 
 app.post("/new", requiresAuth, (req, res) => {
-  const { name, script, log, cron_tag, lock, timer, content } = req.body;
+  const {
+    name,
+    script,
+    log,
+    cron_tag,
+    lock,
+    timer,
+    content,
+    config_path,
+    config_content,
+    config_enabled,
+  } = req.body;
   const normalized = (content || "").replace(/\r/g, "");
   try {
     safeSpawnSync("sudo", ["tee", script], {
@@ -361,15 +376,36 @@ app.post("/new", requiresAuth, (req, res) => {
     return res.redirect("/");
   }
 
+  const configEnabled = config_enabled === "true" || config_enabled === "on";
+  const normalizedConfig = (config_content || "").replace(/\r/g, "");
+  const configPath = configEnabled ? (config_path || "").trim() : "";
+  if (configEnabled && configPath) {
+    try {
+      safeSpawnSync("sudo", ["tee", configPath], {
+        input: normalizedConfig,
+        encoding: "utf8",
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+    } catch (e) {
+      flash(req, "error", `❌ Failed to write config file: ${e.message}`);
+      return res.redirect("/");
+    }
+  }
+
   let data;
   try {
     data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8"));
   } catch (e) {
     data = {};
   }
+  const existing = data[name];
   const nextOrder =
     Math.max(-1, ...Object.values(data).map((d) => d.order ?? 0)) + 1;
-  data[name] = { script, log, cron_tag, lock, order: nextOrder };
+  const order = existing ? existing.order ?? scriptOrder.indexOf(name) : nextOrder;
+  data[name] = { script, log, cron_tag, lock, order };
+  if (configPath) {
+    data[name].config_path = configPath;
+  }
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
     safeSpawnSync("git", ["add", "scripts.json", script]);
@@ -382,7 +418,10 @@ app.post("/new", requiresAuth, (req, res) => {
   LOGS[name] = log;
   CRON_TAGS[name] = cron_tag;
   LOCKS[name] = lock;
-  scriptOrder.push(name);
+  CONFIG_PATHS[name] = configPath;
+  if (!existing) {
+    scriptOrder.push(name);
+  }
 
   let cronContent = "";
   try {
@@ -390,7 +429,13 @@ app.post("/new", requiresAuth, (req, res) => {
   } catch (e) {
     cronContent = "";
   }
-  cronContent += `\n${timer} /bin/bash ${script} # ${cron_tag}\n`;
+  if (existing && existing.cron_tag) {
+    const lines = cronContent.split(/\r?\n/).filter((line) => line && !line.includes(existing.cron_tag));
+    lines.push(`${timer} /bin/bash ${script} # ${cron_tag}`);
+    cronContent = lines.join("\n") + "\n";
+  } else {
+    cronContent += `\n${timer} /bin/bash ${script} # ${cron_tag}\n`;
+  }
   try {
     safeExecSync("sudo crontab -", { input: cronContent });
   } catch (e) {
@@ -398,11 +443,14 @@ app.post("/new", requiresAuth, (req, res) => {
     return res.redirect("/");
   }
 
+  if (existing && existing.log && existing.log !== log) {
+    removeLogrotateConfig(existing.log);
+  }
   writeLogrotateConfig(log, timer);
 
   loadCronTimers();
 
-  flash(req, "success", `✅ Added script '${name}'.`);
+  flash(req, "success", `✅ ${existing ? "Updated" : "Added"} script '${name}'.`);
   res.redirect("/");
 });
 
@@ -430,16 +478,38 @@ app.get("/edit/:name", requiresAuth, (req, res) => {
     lock: LOCKS[name] || "",
     timer: CRON_TIMERS[name] || "",
     content,
+    config_path: CONFIG_PATHS[name] || "",
+    config_content: "",
   };
+  if (data.config_path && fs.existsSync(data.config_path)) {
+    try {
+      data.config_content = fs.readFileSync(data.config_path, "utf8");
+    } catch (e) {
+      flash(req, "error", "❌ Failed to read config file.");
+      return res.redirect("/");
+    }
+  }
   res.render("form", { isNew: false, data, messages, cacheBust: getCacheBust() });
 });
 
 app.post("/edit/:name", requiresAuth, (req, res) => {
   const oldName = req.params.name;
-  const { name, script, log, cron_tag, lock, timer, content } = req.body;
+  const {
+    name,
+    script,
+    log,
+    cron_tag,
+    lock,
+    timer,
+    content,
+    config_path,
+    config_content,
+    config_enabled,
+  } = req.body;
   const scriptPath = script;
   const oldTag = CRON_TAGS[oldName];
   const oldLog = LOGS[oldName];
+  const oldConfigPath = CONFIG_PATHS[oldName];
   if (!scriptPath) {
     flash(req, "error", "❌ Script path required.");
     return res.redirect("/");
@@ -457,6 +527,22 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     return res.redirect("/");
   }
 
+  const configEnabled = config_enabled === "true" || config_enabled === "on";
+  const normalizedConfig = (config_content || "").replace(/\r/g, "");
+  const configPath = configEnabled ? (config_path || "").trim() : "";
+  if (configEnabled && configPath) {
+    try {
+      safeSpawnSync("sudo", ["tee", configPath], {
+        input: normalizedConfig,
+        encoding: "utf8",
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+    } catch (e) {
+      flash(req, "error", `❌ Failed to write config file: ${e.message}`);
+      return res.redirect("/");
+    }
+  }
+
   let data;
   try {
     data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8"));
@@ -466,6 +552,9 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   const oldOrder = data[oldName] ? data[oldName].order : scriptOrder.indexOf(oldName);
   delete data[oldName];
   data[name] = { script, log, cron_tag, lock, order: oldOrder };
+  if (configPath) {
+    data[name].config_path = configPath;
+  }
   try {
     fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
     safeSpawnSync("git", ["add", "scripts.json", scriptPath]);
@@ -480,11 +569,13 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   delete CRON_TAGS[oldName];
   delete LOCKS[oldName];
   delete CRON_TIMERS[oldName];
+  delete CONFIG_PATHS[oldName];
 
   SCRIPTS[name] = script;
   LOGS[name] = log;
   CRON_TAGS[name] = cron_tag;
   LOCKS[name] = lock;
+  CONFIG_PATHS[name] = configPath;
   const idx = scriptOrder.indexOf(oldName);
   if (idx !== -1) scriptOrder[idx] = name;
 
@@ -506,6 +597,9 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
 
   removeLogrotateConfig(oldLog);
   writeLogrotateConfig(log, timer);
+  if (oldConfigPath && oldConfigPath !== configPath && !configPath) {
+    CONFIG_PATHS[name] = "";
+  }
 
   loadCronTimers();
 
