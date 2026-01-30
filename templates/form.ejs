@@ -73,7 +73,29 @@
         </div>
 
         <input type="hidden" name="content" id="hidden-content" />
+        <input type="hidden" name="config_content" id="hidden-config-content" />
+        <input type="hidden" name="config_enabled" id="config-enabled" value="<%= data.config_path ? 'true' : 'false' %>" />
         <div id="editor" class="h-[60vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
+
+        <div class="space-y-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-950/40">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">Config file</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Optional config input to reuse a shared script with different settings.</p>
+            </div>
+            <button type="button" id="config-toggle" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white" aria-pressed="<%= data.config_path ? 'true' : 'false' %>">
+              <span id="config-toggle-label"><%= data.config_path ? 'Enabled' : 'Disabled' %></span>
+            </button>
+          </div>
+
+          <div id="config-section" class="<%= data.config_path ? '' : 'hidden' %> space-y-4">
+            <div class="space-y-2">
+              <label for="config_path" class="text-sm font-medium text-slate-600 dark:text-slate-300">Config file path</label>
+              <input id="config_path" type="text" name="config_path" value="<%= data.config_path %>" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+            </div>
+            <div id="config-editor" class="h-[40vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
+          </div>
+        </div>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <button type="button" id="clear-script" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Clear script</button>
@@ -100,6 +122,14 @@
         minimap: { enabled: false },
         fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'monospace"
       });
+      const configEditor = monaco.editor.create(document.getElementById('config-editor'), {
+        value: <%- JSON.stringify(data.config_content || '') %>,
+        language: 'yaml',
+        automaticLayout: true,
+        theme: currentTheme(),
+        minimap: { enabled: false },
+        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'monospace"
+      });
 
       const applyTheme = () => monaco.editor.setTheme(currentTheme());
       applyTheme();
@@ -112,13 +142,19 @@
       const form = document.querySelector('form');
       const clearButton = document.getElementById('clear-script');
       const copyButton = document.getElementById('copy-script');
+      const configToggle = document.getElementById('config-toggle');
+      const configToggleLabel = document.getElementById('config-toggle-label');
+      const configSection = document.getElementById('config-section');
+      const configPathField = document.getElementById('config_path');
+      const configEnabledField = document.getElementById('config-enabled');
       const fields = [
         document.getElementById('name'),
         document.getElementById('script'),
         document.getElementById('log'),
         document.getElementById('cron_tag'),
         document.getElementById('lock'),
-        document.getElementById('timer')
+        document.getElementById('timer'),
+        configPathField
       ];
       const getFormSnapshot = () => ({
         name: fields[0].value,
@@ -127,7 +163,10 @@
         cron_tag: fields[3].value,
         lock: fields[4].value,
         timer: fields[5].value,
-        content: editor.getValue()
+        content: editor.getValue(),
+        config_path: fields[6].value,
+        config_content: configEditor.getValue(),
+        config_enabled: configEnabledField.value
       });
       const initialSnapshot = getFormSnapshot();
       let isDirty = false;
@@ -138,6 +177,7 @@
 
       fields.forEach((field) => field.addEventListener('input', updateDirtyState));
       editor.onDidChangeModelContent(updateDirtyState);
+      configEditor.onDidChangeModelContent(updateDirtyState);
 
       window.addEventListener('beforeunload', (event) => {
         if (!isDirty) {
@@ -199,8 +239,32 @@
         });
       }
 
+      if (configToggle) {
+        const syncToggleState = (enabled) => {
+          const isEnabled = Boolean(enabled);
+          configToggle.setAttribute('aria-pressed', isEnabled ? 'true' : 'false');
+          configToggleLabel.textContent = isEnabled ? 'Enabled' : 'Disabled';
+          configEnabledField.value = isEnabled ? 'true' : 'false';
+          if (isEnabled) {
+            configSection.classList.remove('hidden');
+            configEditor.layout();
+          } else {
+            configSection.classList.add('hidden');
+          }
+          updateDirtyState();
+        };
+
+        configToggle.addEventListener('click', () => {
+          const nextState = configToggle.getAttribute('aria-pressed') !== 'true';
+          syncToggleState(nextState);
+        });
+
+        syncToggleState(configToggle.getAttribute('aria-pressed') === 'true');
+      }
+
       form.addEventListener('submit', () => {
         document.getElementById('hidden-content').value = editor.getValue();
+        document.getElementById('hidden-config-content').value = configEditor.getValue();
         isDirty = false;
       });
     });
