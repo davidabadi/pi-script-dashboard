@@ -25,7 +25,7 @@
     "log": "/var/log/custom/conabadi_server_backup.log",
     "cron_tag": "Conabadi Server Backup",
     "lock": "/etc/conabadi_server_backup.lock",
-    "order": 1,
+    "order": 0,
     "config_path": "/home/pi/backup-configs/conabadi.conf"
   },
   "Lazo Panama Server Backup": {
@@ -33,7 +33,7 @@
     "log": "/var/log/custom/lazopanama_server_backup.log",
     "cron_tag": "Lazo Panama Server Backup",
     "lock": "/etc/lazopanama_server_backup.lock",
-    "order": 0,
+    "order": 1,
     "config_path": "/home/pi/backup-configs/lazopanama.conf"
   }
 }
