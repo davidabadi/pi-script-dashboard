@@ -46,10 +46,15 @@
     }; %>
 
     <section class="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70" aria-labelledby="scripts-heading">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 id="scripts-heading" class="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Script inventory</h2>
-          <p class="text-sm text-slate-500 dark:text-slate-300">Manage execution, review logs, and adjust scheduling with drag-and-drop ordering.</p>
+          <p class="text-sm text-slate-500 dark:text-slate-300">Manage execution, review logs, and adjust scheduling after enabling reorder mode.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="reorder-button" type="button" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Reorder scripts</button>
+          <button id="save-order-button" type="button" class="hidden inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">Save order</button>
+          <button id="cancel-order-button" type="button" class="hidden inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Cancel</button>
         </div>
       </div>
       <div id="scripts-list" class="mt-6 grid gap-5 sm:grid-cols-2">
@@ -185,14 +190,56 @@
       }
 
       const list = document.getElementById('scripts-list');
+      const reorderButton = document.getElementById('reorder-button');
+      const saveOrderButton = document.getElementById('save-order-button');
+      const cancelOrderButton = document.getElementById('cancel-order-button');
       if (list) {
-        Sortable.create(list, {
+        const getOrder = () => Array.from(list.children).map((node) => node.dataset.name);
+        const applyOrder = (order) => {
+          order.forEach((name) => {
+            const selector = `[data-name="${CSS.escape(name)}"]`;
+            const node = list.querySelector(selector);
+            if (node) {
+              list.appendChild(node);
+            }
+          });
+        };
+        let originalOrder = getOrder();
+        const setReorderMode = (enabled) => {
+          if (!reorderButton || !saveOrderButton || !cancelOrderButton) return;
+          reorderButton.classList.toggle('hidden', enabled);
+          saveOrderButton.classList.toggle('hidden', !enabled);
+          cancelOrderButton.classList.toggle('hidden', !enabled);
+          list.classList.toggle('ring-2', enabled);
+          list.classList.toggle('ring-sky-400/50', enabled);
+        };
+        const sortable = Sortable.create(list, {
           animation: 200,
+          disabled: true,
           handle: '[data-drag-handle]',
           onStart: (evt) => evt.item.classList.add('opacity-60'),
-          onEnd: async (evt) => {
+          onEnd: (evt) => {
             evt.item.classList.remove('opacity-60');
-            const order = Array.from(list.children).map((node) => node.dataset.name);
+          }
+        });
+
+        if (reorderButton && saveOrderButton && cancelOrderButton) {
+          reorderButton.addEventListener('click', () => {
+            originalOrder = getOrder();
+            sortable.option('disabled', false);
+            setReorderMode(true);
+          });
+
+          cancelOrderButton.addEventListener('click', () => {
+            applyOrder(originalOrder);
+            sortable.option('disabled', true);
+            setReorderMode(false);
+          });
+
+          saveOrderButton.addEventListener('click', async () => {
+            const order = getOrder();
+            sortable.option('disabled', true);
+            setReorderMode(false);
             try {
               await fetch('/reorder', {
                 method: 'POST',
@@ -202,8 +249,8 @@
             } catch (error) {
               console.error('Failed to persist script order', error);
             }
-          }
-        });
+          });
+        }
       }
     });
   </script>
