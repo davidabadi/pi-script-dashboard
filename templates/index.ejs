@@ -53,8 +53,8 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <button id="reorder-button" type="button" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Reorder scripts</button>
-          <button id="save-order-button" type="button" class="hidden inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">Save order</button>
-          <button id="cancel-order-button" type="button" class="hidden inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Cancel</button>
+          <button id="save-order-button" type="button" hidden class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">Save order</button>
+          <button id="cancel-order-button" type="button" hidden class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Cancel</button>
         </div>
       </div>
       <div id="scripts-list" class="mt-6 grid gap-5 sm:grid-cols-2">
@@ -207,9 +207,9 @@
         let originalOrder = getOrder();
         const setReorderMode = (enabled) => {
           if (!reorderButton || !saveOrderButton || !cancelOrderButton) return;
-          reorderButton.classList.toggle('hidden', enabled);
-          saveOrderButton.classList.toggle('hidden', !enabled);
-          cancelOrderButton.classList.toggle('hidden', !enabled);
+          reorderButton.hidden = enabled;
+          saveOrderButton.hidden = !enabled;
+          cancelOrderButton.hidden = !enabled;
           list.classList.toggle('ring-2', enabled);
           list.classList.toggle('ring-sky-400/50', enabled);
         };
@@ -224,6 +224,7 @@
         });
 
         if (reorderButton && saveOrderButton && cancelOrderButton) {
+          setReorderMode(false);
           reorderButton.addEventListener('click', () => {
             originalOrder = getOrder();
             sortable.option('disabled', false);
