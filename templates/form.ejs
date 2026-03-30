@@ -96,6 +96,12 @@
               <input id="config_path" type="text" name="config_path" value="<%= data.config_path %>" class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
             </div>
             <div id="config-editor" class="editor-frame h-[40vh] rounded-[1.5rem]"></div>
+            <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button type="button" id="clear-config" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Clear config</button>
+              <% if (!isNew) { %>
+                <button type="button" id="copy-config" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Copy config</button>
+              <% } %>
+            </div>
           </div>
         </div>
 
@@ -144,6 +150,8 @@
       const form = document.querySelector('form');
       const clearButton = document.getElementById('clear-script');
       const copyButton = document.getElementById('copy-script');
+      const clearConfigButton = document.getElementById('clear-config');
+      const copyConfigButton = document.getElementById('copy-config');
       const configToggle = document.getElementById('config-toggle');
       const configToggleLabel = document.getElementById('config-toggle-label');
       const configSection = document.getElementById('config-section');
@@ -235,6 +243,58 @@
           } else {
             resetCopyLabel();
             window.alert('Unable to copy script to clipboard.');
+          }
+        });
+      }
+
+      if (clearConfigButton) {
+        const resetClearConfigLabel = () => {
+          clearConfigButton.textContent = 'Clear config';
+          clearConfigButton.disabled = false;
+        };
+        clearConfigButton.addEventListener('click', () => {
+          configEditor.setValue('');
+          configEditor.focus();
+          clearConfigButton.textContent = 'Cleared!';
+          clearConfigButton.disabled = true;
+          setTimeout(resetClearConfigLabel, 2000);
+        });
+      }
+
+      if (copyConfigButton) {
+        const resetCopyConfigLabel = () => {
+          copyConfigButton.textContent = 'Copy config';
+          copyConfigButton.disabled = false;
+        };
+        copyConfigButton.addEventListener('click', () => {
+          const content = configEditor.getValue();
+          copyConfigButton.textContent = 'Copying...';
+          copyConfigButton.disabled = true;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(content).then(() => {
+              copyConfigButton.textContent = 'Copied!';
+              setTimeout(resetCopyConfigLabel, 2000);
+            }).catch(() => {
+              resetCopyConfigLabel();
+              window.alert('Unable to copy config to clipboard.');
+            });
+            return;
+          }
+
+          const textarea = document.createElement('textarea');
+          textarea.value = content;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          const copied = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          if (copied) {
+            copyConfigButton.textContent = 'Copied!';
+            setTimeout(resetCopyConfigLabel, 2000);
+          } else {
+            resetCopyConfigLabel();
+            window.alert('Unable to copy config to clipboard.');
           }
         });
       }
