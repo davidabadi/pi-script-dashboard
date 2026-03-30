@@ -12,35 +12,74 @@
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
 </head>
-<body class="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-white px-4 py-10 text-slate-900 transition-colors dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
-  <main class="w-full max-w-md rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/80">
-    <div class="flex flex-col items-center gap-3 text-center">
-      <span class="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-500 text-sm font-semibold uppercase tracking-widest text-white">PS</span>
-      <div class="space-y-1">
-        <h1 class="text-2xl font-semibold tracking-tight">Welcome back</h1>
-        <p class="text-sm text-slate-500 dark:text-slate-300">Sign in to manage your automation suite.</p>
+<body class="app-shell flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">
+  <main class="glass-panel grid w-full max-w-5xl overflow-hidden rounded-[2rem] lg:grid-cols-[1.1fr_0.9fr]">
+    <section class="relative hidden min-h-full overflow-hidden bg-[linear-gradient(160deg,#18181b_0%,#111827_42%,#ec4899_100%)] px-8 py-10 text-white lg:flex lg:flex-col lg:justify-between">
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_22%)]"></div>
+      <div class="relative space-y-6">
+        <span class="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-white/80">Automation Suite</span>
+        <div class="space-y-4">
+          <span class="grid h-14 w-14 place-items-center rounded-[1.4rem] bg-white/10 text-sm font-bold uppercase tracking-[0.32em] text-white backdrop-blur">PS</span>
+          <div class="space-y-3">
+            <h1 class="max-w-md text-4xl font-semibold tracking-[-0.05em]">Secure access to script operations and live scheduling.</h1>
+            <p class="max-w-md text-sm leading-6 text-white/74">Review logs, adjust cron behavior, and keep script changes centralized in a single responsive control surface.</p>
+          </div>
+        </div>
       </div>
-    </div>
+      <div class="relative grid gap-3 sm:grid-cols-3">
+        <div class="rounded-[1.5rem] border border-white/15 bg-white/10 p-4 backdrop-blur">
+          <p class="text-xs uppercase tracking-[0.2em] text-white/65">Run</p>
+          <p class="mt-3 text-lg font-semibold">Manual triggers</p>
+        </div>
+        <div class="rounded-[1.5rem] border border-white/15 bg-white/10 p-4 backdrop-blur">
+          <p class="text-xs uppercase tracking-[0.2em] text-white/65">Watch</p>
+          <p class="mt-3 text-lg font-semibold">Recent logs</p>
+        </div>
+        <div class="rounded-[1.5rem] border border-white/15 bg-white/10 p-4 backdrop-blur">
+          <p class="text-xs uppercase tracking-[0.2em] text-white/65">Tune</p>
+          <p class="mt-3 text-lg font-semibold">Cron control</p>
+        </div>
+      </div>
+    </section>
 
-    <% if (messages && messages.length) { %>
-      <div class="mt-6 space-y-3" role="status">
-        <% messages.forEach(msg => { %>
-          <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 shadow-sm dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200"><%= msg.text %></div>
-        <% }) %>
-      </div>
-    <% } %>
+    <section class="px-6 py-8 sm:px-8 sm:py-10">
+      <div class="mx-auto max-w-md">
+        <div class="flex flex-col gap-4">
+          <div class="flex items-center gap-4 lg:hidden">
+            <span class="grid h-12 w-12 place-items-center rounded-[1.2rem] bg-[linear-gradient(135deg,#18181b_0%,#ec4899_100%)] text-sm font-bold uppercase tracking-[0.32em] text-white shadow-lg shadow-brand-500/20">PS</span>
+            <div>
+              <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Pi Script Dashboard</p>
+              <h1 class="mt-1 text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white">Welcome back</h1>
+            </div>
+          </div>
+          <div class="hidden space-y-2 lg:block">
+            <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Pi Script Dashboard</p>
+            <h1 class="text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white">Welcome back</h1>
+            <p class="text-sm leading-6 text-slate-600 dark:text-slate-300">Authenticate to access script execution, editing, schedule management, and log review.</p>
+          </div>
+        </div>
 
-    <form method="POST" aria-label="Sign in form" class="mt-8 space-y-5">
-      <div class="space-y-2">
-        <label for="username" class="text-sm font-medium text-slate-600 dark:text-slate-300">Username</label>
-        <input id="username" type="text" name="username" autocomplete="username" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+        <% if (messages && messages.length) { %>
+          <div class="mt-6 space-y-3" role="status">
+            <% messages.forEach(msg => { %>
+              <div class="rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-3 text-sm font-medium text-rose-700 shadow-sm dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200"><%= msg.text %></div>
+            <% }) %>
+          </div>
+        <% } %>
+
+        <form method="POST" aria-label="Sign in form" class="mt-8 space-y-5">
+          <div class="space-y-2">
+            <label for="username" class="text-sm font-medium text-slate-700 dark:text-slate-200">Username</label>
+            <input id="username" type="text" name="username" autocomplete="username" required class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
+          </div>
+          <div class="space-y-2">
+            <label for="password" class="text-sm font-medium text-slate-700 dark:text-slate-200">Password</label>
+            <input id="password" type="password" name="password" autocomplete="current-password" required class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
+          </div>
+          <button type="submit" class="inline-flex w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Sign in</button>
+        </form>
       </div>
-      <div class="space-y-2">
-        <label for="password" class="text-sm font-medium text-slate-600 dark:text-slate-300">Password</label>
-        <input id="password" type="password" name="password" autocomplete="current-password" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
-      </div>
-      <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Sign in</button>
-    </form>
+    </section>
   </main>
 </body>
 </html>

@@ -13,93 +13,99 @@
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-white text-slate-900 transition-colors dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
-  <div class="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-10">
-    <header class="flex flex-col gap-6 rounded-3xl bg-white/80 p-6 shadow-xl ring-1 ring-slate-200 backdrop-blur dark:bg-slate-900/70 dark:ring-slate-700 md:flex-row md:items-center md:justify-between">
-      <div class="flex items-center gap-4">
-        <span class="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-semibold uppercase tracking-widest text-white">PS</span>
-        <div class="space-y-1">
-          <p class="text-2xl font-semibold tracking-tight"><%= isNew ? 'Script composer' : 'Script editor' %></p>
-          <p class="text-sm text-slate-500 dark:text-slate-300"><%= isNew ? 'Register a new automation script and schedule.' : 'Update script details, schedule, and content.' %></p>
+<body class="app-shell">
+  <div class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <header class="glass-panel rounded-[2rem] px-5 py-5 sm:px-7 lg:px-8">
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl space-y-4">
+          <div class="flex items-center gap-4">
+            <span class="grid h-14 w-14 flex-none place-items-center rounded-[1.4rem] bg-[linear-gradient(135deg,#18181b_0%,#ec4899_100%)] text-sm font-bold uppercase tracking-[0.32em] text-white shadow-lg shadow-brand-500/20">PS</span>
+            <div>
+              <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Authoring workspace</p>
+              <h1 class="mt-1 text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white"><%= isNew ? 'Script composer' : 'Script editor' %></h1>
+            </div>
+          </div>
+          <p class="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300"><%= isNew ? 'Register a new automation job with executable path, schedule, logs, and optional config.' : 'Refine script content, cron behavior, and file paths without leaving the editing surface.' %></p>
         </div>
-      </div>
-      <div class="flex items-center justify-start md:justify-end">
-        <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Back to dashboard</a>
+        <div class="flex items-center justify-start">
+          <a href="/" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-brand-500/30 dark:hover:text-brand-200 motion-reduce:transition-none">Back to dashboard</a>
+        </div>
       </div>
     </header>
 
     <% if (messages && messages.length) { %>
       <div class="space-y-3" role="status">
         <% messages.forEach(msg => { %>
-          <div class="rounded-2xl border px-4 py-3 text-sm font-medium shadow-sm <%= msg.category === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200' : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200' %>"><%= msg.text %></div>
+          <div class="glass-panel rounded-2xl px-4 py-3 text-sm font-medium <%= msg.category === 'success' ? 'border-emerald-200/80 text-emerald-700 dark:border-emerald-500/30 dark:text-emerald-200' : 'border-rose-200/80 text-rose-700 dark:border-rose-500/30 dark:text-rose-200' %>"><%= msg.text %></div>
         <% }) %>
       </div>
     <% } %>
 
-    <section class="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70" aria-labelledby="script-form-heading">
+    <section class="glass-panel rounded-[2rem] px-5 py-5 sm:px-6 lg:px-7" aria-labelledby="script-form-heading">
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 id="script-form-heading" class="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100"><%= isNew ? 'Script metadata' : 'Update script details' %></h2>
-          <p class="text-sm text-slate-500 dark:text-slate-300">Provide executable paths, log locations, cron configuration, and the script body.</p>
+          <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Metadata and source</p>
+          <h2 id="script-form-heading" class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white"><%= isNew ? 'Script metadata' : 'Update script details' %></h2>
+          <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Provide executable paths, log locations, cron configuration, and the script body.</p>
         </div>
       </div>
 
       <form method="POST" class="mt-6 space-y-6">
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div class="space-y-2">
-            <label for="name" class="text-sm font-medium text-slate-600 dark:text-slate-300">Script name</label>
-            <input id="name" type="text" name="name" value="<%= data.name %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+            <label for="name" class="text-sm font-medium text-slate-700 dark:text-slate-200">Script name</label>
+            <input id="name" type="text" name="name" value="<%= data.name %>" required class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none xl:col-span-1" />
           </div>
-          <div class="space-y-2">
-            <label for="script" class="text-sm font-medium text-slate-600 dark:text-slate-300">Script full path</label>
-            <input id="script" type="text" name="script" value="<%= data.script %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          <div class="space-y-2 xl:col-span-2">
+            <label for="script" class="text-sm font-medium text-slate-700 dark:text-slate-200">Script full path</label>
+            <input id="script" type="text" name="script" value="<%= data.script %>" required class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
           </div>
-          <div class="space-y-2">
-            <label for="log" class="text-sm font-medium text-slate-600 dark:text-slate-300">Log file path</label>
-            <input id="log" type="text" name="log" value="<%= data.log %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          <div class="space-y-2 xl:col-span-2">
+            <label for="log" class="text-sm font-medium text-slate-700 dark:text-slate-200">Log file path</label>
+            <input id="log" type="text" name="log" value="<%= data.log %>" required class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
           </div>
-          <div class="space-y-2">
-            <label for="lock" class="text-sm font-medium text-slate-600 dark:text-slate-300">Lock file path</label>
-            <input id="lock" type="text" name="lock" value="<%= data.lock %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          <div class="space-y-2 xl:col-span-3">
+            <label for="lock" class="text-sm font-medium text-slate-700 dark:text-slate-200">Lock file path</label>
+            <input id="lock" type="text" name="lock" value="<%= data.lock %>" required class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
           </div>
-          <div class="space-y-2">
-            <label for="timer" class="text-sm font-medium text-slate-600 dark:text-slate-300">Cron schedule</label>
-            <input id="timer" type="text" name="timer" value="<%= data.timer %>" required class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+          <div class="space-y-2 xl:col-span-2">
+            <label for="timer" class="text-sm font-medium text-slate-700 dark:text-slate-200">Cron schedule</label>
+            <input id="timer" type="text" name="timer" value="<%= data.timer %>" required class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
           </div>
         </div>
 
         <input type="hidden" name="content" id="hidden-content" />
         <input type="hidden" name="config_content" id="hidden-config-content" />
         <input type="hidden" name="config_enabled" id="config-enabled" value="<%= data.config_path ? 'true' : 'false' %>" />
-        <div id="editor" class="h-[60vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
+        <div id="editor" class="editor-frame h-[60vh] rounded-[1.5rem]"></div>
 
-        <div class="space-y-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-950/40">
+        <div class="space-y-4 rounded-[1.75rem] border border-dashed border-slate-200/80 bg-white/40 p-4 dark:border-slate-700 dark:bg-slate-950/30">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">Config file</p>
+              <p class="text-sm font-semibold text-slate-950 dark:text-white">Config file</p>
               <p class="text-xs text-slate-500 dark:text-slate-400">Optional config input to reuse a shared script with different settings.</p>
             </div>
-            <button type="button" id="config-toggle" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white" aria-pressed="<%= data.config_path ? 'true' : 'false' %>">
+            <button type="button" id="config-toggle" class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200/80 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-brand-500/30 dark:hover:text-brand-200 motion-reduce:transition-none" aria-pressed="<%= data.config_path ? 'true' : 'false' %>">
               <span id="config-toggle-label"><%= data.config_path ? 'Enabled' : 'Disabled' %></span>
             </button>
           </div>
 
           <div id="config-section" class="<%= data.config_path ? '' : 'hidden' %> space-y-4">
             <div class="space-y-2">
-              <label for="config_path" class="text-sm font-medium text-slate-600 dark:text-slate-300">Config file path</label>
-              <input id="config_path" type="text" name="config_path" value="<%= data.config_path %>" class="w-full rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400 dark:focus:ring-sky-500/30" />
+              <label for="config_path" class="text-sm font-medium text-slate-700 dark:text-slate-200">Config file path</label>
+              <input id="config_path" type="text" name="config_path" value="<%= data.config_path %>" class="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-500 dark:focus:ring-brand-500/20 motion-reduce:transition-none" />
             </div>
-            <div id="config-editor" class="h-[40vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
+            <div id="config-editor" class="editor-frame h-[40vh] rounded-[1.5rem]"></div>
           </div>
         </div>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button type="button" id="clear-script" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Clear script</button>
+          <button type="button" id="clear-script" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Clear script</button>
           <% if (!isNew) { %>
-            <button type="button" id="copy-script" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Copy script</button>
+            <button type="button" id="copy-script" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Copy script</button>
           <% } %>
-          <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Save changes</button>
-          <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Cancel</a>
+          <button type="submit" class="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Save changes</button>
+          <a href="/" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Cancel</a>
         </div>
       </form>
     </section>
@@ -116,7 +122,7 @@
         automaticLayout: true,
         theme: currentTheme(),
         minimap: { enabled: false },
-        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'monospace"
+        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', monospace"
       });
       const configEditor = monaco.editor.create(document.getElementById('config-editor'), {
         value: <%- JSON.stringify(data.config_content || '') %>,
@@ -124,7 +130,7 @@
         automaticLayout: true,
         theme: currentTheme(),
         minimap: { enabled: false },
-        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'monospace"
+        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', monospace"
       });
 
       const applyTheme = () => monaco.editor.setTheme(currentTheme());

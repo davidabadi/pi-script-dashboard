@@ -13,14 +13,26 @@
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-white text-slate-900 transition-colors dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
-  <div class="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
-    <header class="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70 sm:flex-row sm:items-center sm:justify-between">
-      <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Back to dashboard</a>
-      <h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Execution log - <%= name %></h1>
+<body class="app-shell">
+  <div class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <header class="glass-panel rounded-[2rem] px-5 py-5 sm:px-7 lg:px-8">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl space-y-3">
+          <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Execution trace</p>
+          <h1 class="text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white"><%= name %></h1>
+          <p class="text-sm leading-6 text-slate-600 dark:text-slate-300">Recent output from the selected script. The editor remains read-only and keeps the existing log behavior intact.</p>
+        </div>
+        <a href="/" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-brand-500/30 dark:hover:text-brand-200 motion-reduce:transition-none">Back to dashboard</a>
+      </div>
     </header>
 
-    <div class="flex-1 rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70" id="editor"></div>
+    <section class="glass-panel flex-1 rounded-[2rem] px-5 py-5 sm:px-6 lg:px-7">
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-400">Read only</span>
+        <span class="rounded-full border border-brand-200/70 bg-brand-50/80 px-3 py-1 text-xs uppercase tracking-[0.18em] text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200">Last 100 lines</span>
+      </div>
+      <div class="editor-frame h-[70vh] rounded-[1.5rem]" id="editor"></div>
+    </section>
   </div>
 
   <script>
@@ -35,7 +47,7 @@
         automaticLayout: true,
         theme: currentTheme(),
         minimap: { enabled: false },
-        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'monospace"
+        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', monospace"
       });
 
       const applyTheme = () => monaco.editor.setTheme(currentTheme());

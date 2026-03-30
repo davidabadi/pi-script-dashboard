@@ -1,3 +1,167 @@
+@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700;800&display=swap");
 @config "./tailwind.config.js";
 @source "./templates/**/*.ejs";
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Fira Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --color-brand-50: #fff2f8;
+  --color-brand-100: #ffe4f0;
+  --color-brand-200: #ffc7df;
+  --color-brand-300: #ff99c6;
+  --color-brand-400: #ff5da9;
+  --color-brand-500: #ec4899;
+  --color-brand-600: #cf247e;
+  --color-brand-700: #a51963;
+  --color-ink-950: #09090b;
+  --color-panel: #ffffff;
+  --color-panel-dark: rgba(15, 23, 42, 0.78);
+}
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  html {
+    min-height: 100%;
+    background:
+      radial-gradient(circle at top left, rgba(236, 72, 153, 0.2), transparent 28%),
+      radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 32%),
+      linear-gradient(180deg, #fcfcfd 0%, #f4f4f5 52%, #f8fafc 100%);
+    background-color: #f8fafc;
+  }
+
+  body {
+    min-height: 100vh;
+    color: var(--color-ink-950);
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html {
+      background:
+        radial-gradient(circle at top left, rgba(236, 72, 153, 0.18), transparent 25%),
+        radial-gradient(circle at top right, rgba(34, 211, 238, 0.12), transparent 30%),
+        linear-gradient(180deg, #09090b 0%, #111827 48%, #020617 100%);
+      background-color: #09090b;
+    }
+
+    body {
+      color: #f8fafc;
+    }
+  }
+
+  ::selection {
+    background: rgba(236, 72, 153, 0.18);
+  }
+}
+
+@layer components {
+  .app-shell {
+    position: relative;
+    overflow-x: clip;
+    isolation: isolate;
+  }
+
+  .app-shell::before,
+  .app-shell::after {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: auto;
+    z-index: -1;
+    border-radius: 999px;
+    filter: blur(48px);
+    opacity: 0.7;
+  }
+
+  .app-shell::before {
+    top: 5rem;
+    left: -5rem;
+    width: 18rem;
+    height: 18rem;
+    background: rgba(236, 72, 153, 0.18);
+  }
+
+  .app-shell::after {
+    right: -4rem;
+    bottom: 5rem;
+    width: 20rem;
+    height: 20rem;
+    background: rgba(14, 165, 233, 0.14);
+  }
+
+  .glass-panel {
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.68));
+    box-shadow: 0 18px 60px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(20px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .glass-panel {
+      border-color: rgba(148, 163, 184, 0.18);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(15, 23, 42, 0.66));
+      box-shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
+    }
+  }
+
+  .app-grid {
+    position: relative;
+  }
+
+  .metric-card {
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    background: rgba(255, 255, 255, 0.62);
+    backdrop-filter: blur(18px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .metric-card {
+      border-color: rgba(148, 163, 184, 0.16);
+      background: rgba(15, 23, 42, 0.54);
+    }
+  }
+
+  .editor-frame {
+    overflow: hidden;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .editor-frame {
+      border-color: rgba(148, 163, 184, 0.16);
+      background: rgba(2, 6, 23, 0.78);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+  }
+
+  .accent-ring {
+    box-shadow:
+      0 0 0 1px rgba(236, 72, 153, 0.12),
+      0 18px 50px rgba(236, 72, 153, 0.12);
+  }
+
+  .status-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

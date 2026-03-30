@@ -13,99 +13,166 @@
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-white text-slate-900 transition-colors dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
-  <div class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-10">
-    <header class="flex flex-col gap-6 rounded-3xl bg-white/80 p-6 shadow-xl ring-1 ring-slate-200 backdrop-blur dark:bg-slate-900/70 dark:ring-slate-700 md:flex-row md:items-center md:justify-between">
-      <div class="flex items-center gap-4">
-        <span class="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-500 text-sm font-semibold uppercase tracking-widest text-white">PS</span>
-        <div class="space-y-1">
-          <p class="text-2xl font-semibold tracking-tight">Pi Script Dashboard</p>
-          <p class="text-sm text-slate-500 dark:text-slate-300">Monitor, orchestrate, and tune your automation in real time.</p>
+<body class="app-shell">
+  <% const statusMap = {
+    running: { label: 'Running', classes: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200', dot: 'bg-sky-500' },
+    success: { label: 'Success', classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200', dot: 'bg-emerald-500' },
+    partial: { label: 'Partial', classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200', dot: 'bg-amber-400 dark:bg-amber-300' },
+    failed: { label: 'Failed', classes: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200', dot: 'bg-rose-500' }
+  }; %>
+  <% const totalScripts = scriptOrder.length; %>
+  <% const runningCount = scriptOrder.filter(name => status[name] === 'running').length; %>
+  <% const pausedCount = scriptOrder.filter(name => paused[name]).length; %>
+  <% const healthyCount = scriptOrder.filter(name => status[name] === 'success').length; %>
+
+  <div class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <header class="glass-panel rounded-[2rem] px-5 py-5 sm:px-7 lg:px-8">
+      <div class="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+        <div class="max-w-3xl space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="inline-flex items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-slate-600 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300">Automation Control Center</span>
+            <span class="inline-flex items-center gap-2 rounded-full border border-brand-200/70 bg-brand-50/80 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200">
+              <span class="status-dot bg-brand-500"></span>
+              Live orchestration
+            </span>
+          </div>
+
+          <div class="space-y-3">
+            <div class="flex items-center gap-4">
+              <span class="grid h-14 w-14 flex-none place-items-center rounded-[1.4rem] bg-[linear-gradient(135deg,#18181b_0%,#ec4899_100%)] text-sm font-bold uppercase tracking-[0.32em] text-white shadow-lg shadow-brand-500/20">PS</span>
+              <div>
+                <p class="text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Pi Script Dashboard</p>
+                <h1 class="text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white sm:text-4xl">Run, review, and reshape your script fleet from one surface.</h1>
+              </div>
+            </div>
+            <p class="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">The dashboard keeps execution, scheduling, logs, and script maintenance in a single responsive workspace without changing the underlying automation flow.</p>
+          </div>
         </div>
-      </div>
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <a href="/new" class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-600/30 transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">New script</a>
-        <button id="update-button" type="button" onclick="runUpdate()" class="inline-flex items-center justify-center rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-600/30 transition hover:bg-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500">Update dashboard</button>
-        <a href="/logout" class="inline-flex items-center justify-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:bg-rose-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">Logout</a>
+
+        <div class="flex flex-col gap-3 sm:flex-row xl:flex-col">
+          <a href="/new" class="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Create script</a>
+          <button id="update-button" type="button" onclick="runUpdate()" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/75 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-brand-500/40 dark:hover:text-brand-200 motion-reduce:transition-none">Update dashboard</button>
+          <a href="/logout" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-rose-200/80 bg-rose-50/80 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20 motion-reduce:transition-none">Logout</a>
+        </div>
       </div>
     </header>
 
     <% if (messages && messages.length) { %>
       <div class="space-y-3" role="status">
         <% messages.forEach(msg => { %>
-          <div class="rounded-2xl border px-4 py-3 text-sm font-medium shadow-sm <%= msg.category === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200' : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200' %>"><%= msg.text %></div>
+          <div class="glass-panel rounded-2xl px-4 py-3 text-sm font-medium <%= msg.category === 'success' ? 'border-emerald-200/80 text-emerald-700 dark:border-emerald-500/30 dark:text-emerald-200' : 'border-rose-200/80 text-rose-700 dark:border-rose-500/30 dark:text-rose-200' %>"><%= msg.text %></div>
         <% }) %>
       </div>
     <% } %>
 
-    <% const statusMap = {
-      running: { label: 'Running', classes: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200' },
-      success: { label: 'Success', classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200' },
-      partial: { label: 'Partial', classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200' },
-      failed: { label: 'Failed', classes: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200' }
-    }; %>
+    <section class="app-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Overview metrics">
+      <article class="metric-card rounded-[1.75rem] p-5">
+        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Total scripts</p>
+        <div class="mt-3 flex items-end justify-between gap-3">
+          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= totalScripts %></p>
+          <span class="text-sm text-slate-500 dark:text-slate-400">managed</span>
+        </div>
+      </article>
+      <article class="metric-card rounded-[1.75rem] p-5">
+        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Active now</p>
+        <div class="mt-3 flex items-end justify-between gap-3">
+          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= runningCount %></p>
+          <span class="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><span class="status-dot bg-sky-500"></span>running</span>
+        </div>
+      </article>
+      <article class="metric-card rounded-[1.75rem] p-5">
+        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Healthy runs</p>
+        <div class="mt-3 flex items-end justify-between gap-3">
+          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= healthyCount %></p>
+          <span class="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><span class="status-dot bg-emerald-500"></span>successful</span>
+        </div>
+      </article>
+      <article class="metric-card rounded-[1.75rem] p-5">
+        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Paused schedules</p>
+        <div class="mt-3 flex items-end justify-between gap-3">
+          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= pausedCount %></p>
+          <span class="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><span class="status-dot bg-amber-400 dark:bg-amber-300"></span>awaiting resume</span>
+        </div>
+      </article>
+    </section>
 
-    <section class="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70" aria-labelledby="scripts-heading">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 id="scripts-heading" class="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Script inventory</h2>
-          <p class="text-sm text-slate-500 dark:text-slate-300">Manage execution, review logs, and adjust scheduling after enabling reorder mode.</p>
+    <section class="glass-panel rounded-[2rem] px-5 py-5 sm:px-6 lg:px-7" aria-labelledby="scripts-heading">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-2xl">
+          <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Inventory</p>
+          <h2 id="scripts-heading" class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white">Operational script inventory</h2>
+          <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Inspect status, trigger execution, open logs, update source, and switch into reorder mode when you want to adjust the presentation sequence.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button id="reorder-button" type="button" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Reorder scripts</button>
-          <button id="save-order-button" type="button" hidden class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">Save order</button>
-          <button id="cancel-order-button" type="button" hidden class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">Cancel</button>
+          <button id="reorder-button" type="button" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Reorder scripts</button>
+          <button id="save-order-button" type="button" hidden class="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Save order</button>
+          <button id="cancel-order-button" type="button" hidden class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Cancel</button>
         </div>
       </div>
-      <div id="scripts-list" class="mt-6 grid gap-5 sm:grid-cols-2">
+
+      <div id="scripts-list" class="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
         <% scriptOrder.forEach(name => { %>
           <% const state = status[name]; %>
           <% const meta = state ? (statusMap[state] || statusMap.failed) : null; %>
-          <article class="group flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm ring-1 ring-transparent transition-all hover:-translate-y-1 hover:shadow-xl dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-slate-600" data-name="<%= name %>">
-            <div class="flex items-start justify-between gap-3" data-drag-handle>
-              <div class="flex items-center gap-3">
-                <svg class="h-5 w-5 flex-none text-slate-300 transition group-hover:text-slate-400 dark:text-slate-600 dark:group-hover:text-slate-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <circle cx="5" cy="5" r="1.5"></circle>
-                  <circle cx="5" cy="10" r="1.5"></circle>
-                  <circle cx="5" cy="15" r="1.5"></circle>
-                  <circle cx="10" cy="5" r="1.5"></circle>
-                  <circle cx="10" cy="10" r="1.5"></circle>
-                  <circle cx="10" cy="15" r="1.5"></circle>
-                </svg>
-                <span class="text-base font-semibold text-slate-900 transition group-hover:text-slate-700 dark:text-slate-100 dark:group-hover:text-white"><%= name %></span>
+          <article class="group accent-ring flex flex-col gap-5 rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(15,23,42,0.14)] dark:border-slate-700/70 dark:bg-slate-900/72 dark:shadow-[0_24px_70px_rgba(2,6,23,0.4)] motion-reduce:transform-none motion-reduce:transition-none" data-name="<%= name %>">
+            <div class="flex items-start justify-between gap-4" data-drag-handle>
+              <div class="flex min-w-0 items-start gap-3">
+                <div class="mt-1 flex h-10 w-10 flex-none items-center justify-center rounded-2xl border border-slate-200/80 bg-white/90 text-slate-500 transition group-hover:border-brand-200 group-hover:text-brand-600 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-300 dark:group-hover:border-brand-500/30 dark:group-hover:text-brand-200">
+                  <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="5" r="1.5"></circle>
+                    <circle cx="5" cy="10" r="1.5"></circle>
+                    <circle cx="5" cy="15" r="1.5"></circle>
+                    <circle cx="10" cy="5" r="1.5"></circle>
+                    <circle cx="10" cy="10" r="1.5"></circle>
+                    <circle cx="10" cy="15" r="1.5"></circle>
+                  </svg>
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate text-lg font-semibold tracking-[-0.03em] text-slate-950 dark:text-white"><%= name %></p>
+                  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Last run: <span class="font-medium text-slate-700 dark:text-slate-200"><%= state === 'running' ? 'In progress' : (last_run[name] || 'Never') %></span></p>
+                </div>
               </div>
               <% if (meta) { %>
-                <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold <%= meta.classes %>"><%= meta.label %></span>
-              <% } %>
-            </div>
-            <div class="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-              <span>Last run: <strong class="font-semibold text-slate-900 dark:text-slate-100"><%= state === 'running' ? 'In progress' : (last_run[name] || 'Never') %></strong></span>
-              <% if (paused[name]) { %>
-                <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300">
-                  <span class="h-2 w-2 rounded-full bg-amber-400 dark:bg-amber-300"></span>
-                  Cron paused
+                <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold <%= meta.classes %>">
+                  <span class="status-dot <%= meta.dot %>"></span>
+                  <%= meta.label %>
                 </span>
               <% } %>
             </div>
+
+            <div class="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+              <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 dark:border-slate-700 dark:bg-slate-950/60">Direct execution</span>
+              <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 dark:border-slate-700 dark:bg-slate-950/60">Live log review</span>
+              <% if (paused[name]) { %>
+                <span class="rounded-full border border-amber-200/80 bg-amber-100/80 px-3 py-1 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">Cron paused</span>
+              <% } %>
+            </div>
+
             <div class="grid gap-3 sm:grid-cols-2">
-              <a href="/run/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500">Run now</a>
-              <a href="/log/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">View log</a>
-              <a href="/toggle_cron/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"><%= paused[name] ? 'Resume cron' : 'Pause cron' %></a>
-              <a href="/edit/<%= encodeURIComponent(name) %>" class="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Edit script</a>
+              <a href="/run/<%= encodeURIComponent(name) %>" class="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#18181b_0%,#ec4899_100%)] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Run now</a>
+              <a href="/edit/<%= encodeURIComponent(name) %>" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-brand-500/30 dark:hover:text-brand-200 motion-reduce:transition-none">Edit script</a>
+              <a href="/log/<%= encodeURIComponent(name) %>" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">View log</a>
+              <a href="/toggle_cron/<%= encodeURIComponent(name) %>" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none"><%= paused[name] ? 'Resume cron' : 'Pause cron' %></a>
             </div>
           </article>
         <% }) %>
       </div>
     </section>
 
-    <details class="group overflow-hidden rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-      <summary class="flex cursor-pointer items-center justify-between gap-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
-        <span>Cron schedule overview</span>
-        <svg class="h-5 w-5 flex-none text-slate-400 transition duration-200 group-open:rotate-180 dark:text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.192l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.24 4.53a.75.75 0 0 1-1.08 0l-4.24-4.53a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd" />
-        </svg>
+    <details class="glass-panel group rounded-[2rem] px-5 py-5 sm:px-6 lg:px-7">
+      <summary class="flex cursor-pointer flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Schedule reference</p>
+          <p class="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-white">Cron schedule overview</p>
+        </div>
+        <div class="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+          <span>Inspect the current crontab snapshot</span>
+          <svg class="h-5 w-5 flex-none text-slate-400 transition duration-200 group-open:rotate-180 dark:text-slate-500 motion-reduce:transition-none" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.192l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.24 4.53a.75.75 0 0 1-1.08 0l-4.24-4.53a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd" />
+          </svg>
+        </div>
       </summary>
-      <div id="cron-editor" class="mt-5 h-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950/70"></div>
+      <div id="cron-editor" class="editor-frame mt-5 h-80 rounded-[1.5rem]"></div>
     </details>
   </div>
 
@@ -211,7 +278,9 @@
           saveOrderButton.hidden = !enabled;
           cancelOrderButton.hidden = !enabled;
           list.classList.toggle('ring-2', enabled);
-          list.classList.toggle('ring-sky-400/50', enabled);
+          list.classList.toggle('ring-brand-300', enabled);
+          list.classList.toggle('rounded-[1.75rem]', enabled);
+          list.classList.toggle('p-2', enabled);
         };
         const sortable = Sortable.create(list, {
           animation: 200,
