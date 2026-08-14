@@ -1,0 +1,33 @@
+[Unit]
+Description=Pi Script Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi-dashboard
+Group=pi-dashboard
+WorkingDirectory=/opt/pi-script-dashboard
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/pi-script-dashboard/environment
+ExecStart=/usr/bin/node /opt/pi-script-dashboard/server.js
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/pi-script-dashboard /var/log/pi-script-dashboard /run/pi-script-dashboard
+
+[Install]
+WantedBy=multi-user.target

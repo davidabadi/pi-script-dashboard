@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+request=/var/lib/pi-script-dashboard/update.request
+lock=/run/pi-script-dashboard/dashboard-update.lock
+repo=/opt/pi-script-dashboard
+
+test -f "$request"
+install -o pi-dashboard -g pi-dashboard -m 0600 /dev/null "$lock"
+trap 'rm -f "$lock" "$request"' EXIT
+
+runuser -u pi-dashboard -- git -C "$repo" pull --ff-only
+runuser -u pi-dashboard -- npm --prefix "$repo" ci --omit=dev
+systemctl restart pi-script-dashboard.service

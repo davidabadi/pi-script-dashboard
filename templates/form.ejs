@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
+  <script nonce="<%= cspNonce %>" src="/vendor/monaco/vs/loader.js"></script>
 </head>
 <body class="app-shell">
   <div class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -50,6 +50,7 @@
       </div>
 
       <form method="POST" class="mt-6 space-y-6">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div class="space-y-2">
             <label for="name" class="text-sm font-medium text-slate-700 dark:text-slate-200">Script name</label>
@@ -116,13 +117,13 @@
     </section>
   </div>
 
-  <script>
-    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
+  <script nonce="<%= cspNonce %>">
+    require.config({ paths: { vs: '/vendor/monaco/vs' } });
     require(['vs/editor/editor.main'], function () {
       const mql = window.matchMedia('(prefers-color-scheme: dark)');
       const currentTheme = () => (mql.matches ? 'vs-dark' : 'vs');
       const editor = monaco.editor.create(document.getElementById('editor'), {
-        value: <%- JSON.stringify(data.content) %>,
+        value: <%- safeJson(data.content) %>,
         language: 'shell',
         automaticLayout: true,
         theme: currentTheme(),
@@ -130,7 +131,7 @@
         fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', monospace"
       });
       const configEditor = monaco.editor.create(document.getElementById('config-editor'), {
-        value: <%- JSON.stringify(data.config_content || '') %>,
+        value: <%- safeJson(data.config_content || '') %>,
         language: 'yaml',
         automaticLayout: true,
         theme: currentTheme(),

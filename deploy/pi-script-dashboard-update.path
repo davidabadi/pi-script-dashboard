@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for authenticated dashboard update requests
+
+[Path]
+PathExists=/var/lib/pi-script-dashboard/update.request
+Unit=pi-script-dashboard-update.service
+
+[Install]
+WantedBy=multi-user.target

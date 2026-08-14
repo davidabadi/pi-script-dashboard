@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs/loader.js"></script>
+  <script nonce="<%= cspNonce %>" src="/vendor/monaco/vs/loader.js"></script>
 </head>
 <body class="app-shell">
   <div class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -34,13 +34,13 @@
     </section>
   </div>
 
-  <script>
-    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.40.0/min/vs' } });
+  <script nonce="<%= cspNonce %>">
+    require.config({ paths: { vs: '/vendor/monaco/vs' } });
     require(['vs/editor/editor.main'], function () {
       const mql = window.matchMedia('(prefers-color-scheme: dark)');
       const currentTheme = () => (mql.matches ? 'vs-dark' : 'vs');
       monaco.editor.create(document.getElementById('editor'), {
-        value: <%- JSON.stringify(content.join('\n')) %>,
+        value: <%- safeJson(content.join('\n')) %>,
         language: 'shell',
         readOnly: true,
         automaticLayout: true,

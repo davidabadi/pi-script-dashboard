@@ -1,6 +1,5 @@
 # Node dependencies
 node_modules/
-package-lock.json
 
 # Environment variables
 .env
@@ -8,5 +7,6 @@ package-lock.json
 # Update script
 update_dashboard.sh
 
-# Generated Tailwind CSS
-public/tailwind.css
+# Local runtime/test state
+.runtime/
+coverage/

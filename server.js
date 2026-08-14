@@ -1,18 +1,41 @@
 const path = require("path");
 const fs = require("fs");
-const { execSync, spawn, spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const express = require("express");
 const session = require("express-session");
 const FileStore = require("session-file-store")(session);
 const os = require("os");
+const crypto = require("crypto");
+const {
+  createRateLimiter, csrfMiddleware, requireCsrf, requireSameOrigin, safeJson,
+  securityHeaders, shellQuote, stableJobId, validateCron, validateManagedPath,
+  validateName,
+} = require("./security");
+require("dotenv").config();
 const isLinux = os.platform() === "linux";
+const isProduction = process.env.NODE_ENV === "production";
+const runtimeRoot = isLinux ? "/var/lib/pi-script-dashboard" : path.join(__dirname, ".runtime");
+const SCRIPT_ROOT = process.env.SCRIPT_ROOT || path.join(runtimeRoot, "scripts");
+const CONFIG_ROOT = process.env.CONFIG_ROOT || path.join(runtimeRoot, "configs");
+const LOG_ROOT = process.env.LOG_ROOT || (isLinux ? "/var/log/pi-script-dashboard" : path.join(runtimeRoot, "logs"));
+const LOCK_ROOT = process.env.LOCK_ROOT || (isLinux ? "/run/pi-script-dashboard" : path.join(runtimeRoot, "locks"));
+const DATA_FILE = process.env.DATA_FILE || path.join(runtimeRoot, "scripts.json");
+const AUDIT_LOG = process.env.AUDIT_LOG || path.join(LOG_ROOT, "audit.jsonl");
+const SESSION_DIR = process.env.SESSION_DIR || path.join(runtimeRoot, "sessions");
+const ADMIN_GROUP = process.env.ADMIN_GROUP || "pi-dashboard-admins";
+const TRUSTED_HOSTS = (process.env.TRUSTED_HOSTS || "localhost:8080,127.0.0.1:8080").split(",").map((value) => value.trim()).filter(Boolean);
+const SESSION_COOKIE_NAME = isProduction ? "__Host-pi_dashboard" : "pi_dashboard";
 
-function safeExecSync(cmd, options = {}) {
-  if (!isLinux) {
-    console.warn(`⚠️ Skipping execSync on non-Linux: ${cmd}`);
-    return Buffer.from("");
-  }
-  return execSync(cmd, options);
+function ensurePrivateDirectory(dir) {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try { fs.chmodSync(dir, 0o700); } catch {}
+}
+for (const dir of [runtimeRoot, SCRIPT_ROOT, CONFIG_ROOT, LOG_ROOT, LOCK_ROOT, SESSION_DIR]) ensurePrivateDirectory(dir);
+
+function audit(event, details = {}) {
+  const entry = JSON.stringify({ timestamp: new Date().toISOString(), event, ...details }) + "\n";
+  try { fs.appendFileSync(AUDIT_LOG, entry, { encoding: "utf8", mode: 0o600 }); }
+  catch (error) { console.error("Audit log write failed:", error.message); }
 }
 
 function safeSpawnSync(cmd, args, options = {}) {
@@ -42,87 +65,43 @@ function formatSpawnError(result, fallback) {
 function ensureParentDir(filePath) {
   const dir = path.dirname(filePath);
   if (!dir || dir === ".") return;
-  if (!isLinux) {
-    fs.mkdirSync(dir, { recursive: true });
-    return;
-  }
-  const result = safeSpawnSync("sudo", ["mkdir", "-p", dir], {
-    stdio: ["ignore", "ignore", "pipe"],
-  });
-  if (result.status && result.status !== 0) {
-    throw new Error(formatSpawnError(result, "Failed to create directory."));
-  }
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
 function writeFileWithSudo(filePath, content, label) {
   ensureParentDir(filePath);
-  if (!isLinux) {
-    fs.writeFileSync(filePath, content, "utf8");
-    return;
-  }
-  const result = safeSpawnSync("sudo", ["tee", filePath], {
-    input: content,
-    encoding: "utf8",
-    stdio: ["pipe", "ignore", "pipe"],
-  });
-  if (result.status && result.status !== 0) {
-    throw new Error(`${label}: ${formatSpawnError(result, "Write failed.")}`);
+  const temp = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+  try {
+    fs.writeFileSync(temp, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    fs.renameSync(temp, filePath);
+    fs.chmodSync(filePath, 0o600);
+  } catch (error) {
+    try { fs.unlinkSync(temp); } catch {}
+    throw new Error(`${label}: ${error.message}`);
   }
 }
 
 function runSudoCommand(args, label) {
-  if (!isLinux) return;
-  const result = safeSpawnSync("sudo", args, {
-    stdio: ["ignore", "ignore", "pipe"],
-  });
-  if (result.status && result.status !== 0) {
-    throw new Error(`${label}: ${formatSpawnError(result, "Command failed.")}`);
-  }
-}
-
-function hasGitIdentity() {
-  try {
-    const name = safeExecSync("git config user.name").toString().trim();
-    const email = safeExecSync("git config user.email").toString().trim();
-    return Boolean(name && email);
-  } catch {
-    return false;
-  }
-}
-const lockFile = "/tmp/dashboard-update.lock";
-
-function commitScriptsUpdate(message, extraPaths = []) {
-  const files = ["scripts.json", ...extraPaths].filter(Boolean);
-  try {
-    safeExecSync(`git add ${files.map((file) => `"${file}"`).join(" ")}`);
-  } catch (e) {
-    console.warn("⚠️ Failed to stage scripts.json update:", e.message);
+  if (args[0] === "chmod" && args[1] === "+x") {
+    fs.chmodSync(args[2], 0o700);
     return;
   }
-
-  if (!hasGitIdentity()) {
-    console.warn("⚠️ Git user.name/email not set; skipping commit.");
-    return;
-  }
-
-  try {
-    safeExecSync(`git commit -m "${message.replace(/"/g, '\\"')}"`);
-  } catch (e) {
-    console.warn("⚠️ Failed to commit scripts.json update:", e.message);
-    return;
-  }
-
-  try {
-    const remotes = safeExecSync("git remote").toString().trim();
-    if (remotes) {
-      safeExecSync("git push");
-    } else {
-      console.warn("⚠️ No git remote configured; skipping push.");
-    }
-  } catch (e) {
-    console.warn("⚠️ Failed to push scripts.json update:", e.message);
-  }
+  throw new Error(`${label}: privileged command is not allowlisted.`);
 }
+
+function readCrontab() {
+  const result = safeSpawnSync("crontab", ["-l"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (result.status !== 0) return "";
+  return String(result.stdout || "");
+}
+
+function writeCrontab(content) {
+  const result = safeSpawnSync("crontab", ["-"], { input: content, encoding: "utf8", stdio: ["pipe", "ignore", "pipe"] });
+  if (result.status !== 0) throw new Error(formatSpawnError(result, "Failed to update crontab."));
+}
+
+const lockFile = path.join(LOCK_ROOT, "dashboard-update.lock");
+const updateRequestFile = path.join(runtimeRoot, "update.request");
 
 if (fs.existsSync(lockFile)) {
   try {
@@ -143,23 +122,50 @@ if (isLinux) {
 } else {
   console.warn("⚠️ PAM is disabled — using test login for development.");
 }
+if (isProduction && !pam) throw new Error("PAM authentication is required in production.");
 
-require("dotenv").config();
+function isAuthorizedAdmin(username) {
+  if (!isLinux) return !isProduction;
+  const result = safeSpawnSync("id", ["-nG", username], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  if (result.status !== 0) return false;
+  return String(result.stdout || "").trim().split(/\s+/).includes(ADMIN_GROUP);
+}
 
 const app = express();
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.set("trust proxy", "loopback");
+app.disable("x-powered-by");
+app.use(securityHeaders);
+app.use(express.urlencoded({ extended: false, limit: "300kb", parameterLimit: 30 }));
+app.use(express.json({ limit: "32kb", strict: true }));
+const configuredSecret = process.env.SESSION_SECRET || process.env.SECRET_KEY || "";
+if (isProduction && Buffer.byteLength(configuredSecret) < 32) {
+  throw new Error("SESSION_SECRET must contain at least 32 bytes in production.");
+}
+const sessionSecret = Buffer.byteLength(configuredSecret) >= 32 ? configuredSecret : crypto.randomBytes(48).toString("base64url");
+if (!isProduction && Buffer.byteLength(configuredSecret) < 32) console.warn("Using an ephemeral development session secret.");
 app.use(
   session({
     store: new FileStore({
-      path: "/tmp/dashboard-sessions",
+      path: SESSION_DIR,
       retries: 1,
+      ttl: 30 * 60,
+      reapInterval: 10 * 60,
     }),
-    secret: process.env.SECRET_KEY || "changeme",
+    name: SESSION_COOKIE_NAME,
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
+    cookie: { httpOnly: true, secure: isProduction, sameSite: "strict", path: "/", maxAge: 30 * 60 * 1000 },
   })
 );
+app.use(csrfMiddleware);
+app.use(requireSameOrigin(TRUSTED_HOSTS));
+app.use((req, res, next) => {
+  res.locals.safeJson = safeJson;
+  if (req.session.logged_in) res.set("Cache-Control", "no-store, private");
+  next();
+});
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "templates"));
@@ -176,8 +182,11 @@ app.use(
     },
   })
 );
+app.use("/vendor/monaco/vs", express.static(path.join(__dirname, "node_modules", "monaco-editor", "min", "vs"), { fallthrough: false, index: false, immutable: true, maxAge: "1y" }));
+app.get("/vendor/sortable/Sortable.min.js", (req, res) => res.sendFile(path.join(__dirname, "node_modules", "sortablejs", "Sortable.min.js")));
 
-const scriptsData = require("./scripts.json");
+if (!fs.existsSync(DATA_FILE)) fs.copyFileSync(path.join(__dirname, "scripts.json"), DATA_FILE);
+const scriptsData = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
 
 let scriptOrder = Object.keys(scriptsData).sort(
   (a, b) => (scriptsData[a].order ?? 0) - (scriptsData[b].order ?? 0)
@@ -211,9 +220,7 @@ for (const name of scriptOrder) {
 }
 
 function buildCronKey(name, cronTag, configPath) {
-  const base = (cronTag || name || "").trim();
-  const suffix = (configPath || "").trim() ? path.basename(configPath.trim()) : "";
-  return suffix ? `${base}:${suffix}` : base;
+  return `pi-dashboard:${stableJobId(String(name || cronTag || ""))}`;
 }
 
 function buildCronCommand(script, configPath) {
@@ -221,13 +228,13 @@ function buildCronCommand(script, configPath) {
   if (configPath) {
     commandParts.push(configPath);
   }
-  return commandParts.join(" ");
+  return commandParts.map(shellQuote).join(" ");
 }
 
 function loadCronTimers() {
   let lines = [];
   try {
-    lines = safeExecSync("sudo crontab -l").toString().split(/\r?\n/);
+    lines = readCrontab().split(/\r?\n/);
   } catch (e) {
     lines = [];
   }
@@ -263,34 +270,6 @@ function cronToFrequency(timer) {
   return "daily";
 }
 
-function writeLogrotateConfig(logPath, timer) {
-  if (!isLinux || !logPath) return;
-  const freq = cronToFrequency(timer);
-  const base = path.basename(logPath).replace(/\.log$/, "");
-  const dest = `/etc/logrotate.d/${base}`;
-  const content = `${logPath} {\n    ${freq}\n    rotate 7\n    compress\n    missingok\n    notifempty\n    create 640 pi adm\n}\n`;
-  try {
-    safeSpawnSync("sudo", ["tee", dest], {
-      input: content,
-      encoding: "utf8",
-      stdio: ["pipe", "ignore", "pipe"],
-    });
-  } catch (e) {
-    console.warn("⚠️ Failed to write logrotate config:", e.message);
-  }
-}
-
-function removeLogrotateConfig(logPath) {
-  if (!isLinux || !logPath) return;
-  const base = path.basename(logPath).replace(/\.log$/, "");
-  const dest = `/etc/logrotate.d/${base}`;
-  try {
-    safeSpawnSync("sudo", ["rm", "-f", dest]);
-  } catch (e) {
-    console.warn("⚠️ Failed to remove logrotate config:", e.message);
-  }
-}
-
 function flash(req, category, text) {
   if (!req.session.messages) req.session.messages = [];
   req.session.messages.push({ category, text });
@@ -298,7 +277,22 @@ function flash(req, category, text) {
 
 function requiresAuth(req, res, next) {
   if (!req.session.logged_in) return res.redirect("/login");
+  if (req.session.absoluteExpiresAt <= Date.now()) {
+    return req.session.destroy(() => res.redirect("/login"));
+  }
   next();
+}
+
+function validateSubmittedJob(body) {
+  if (validateName(body.name) !== body.name) throw new Error("Name cannot start or end with whitespace.");
+  validateManagedPath(body.script, SCRIPT_ROOT, [".sh"]);
+  validateManagedPath(body.log, LOG_ROOT, [".log"]);
+  validateManagedPath(body.lock, LOCK_ROOT);
+  validateCron(body.timer);
+  if (Buffer.byteLength(String(body.content || ""), "utf8") > 256 * 1024) throw new Error("Script content is too large.");
+  const configEnabled = body.config_enabled === "true" || body.config_enabled === "on" || Boolean(String(body.config_path || "").trim());
+  if (configEnabled) validateManagedPath(body.config_path, CONFIG_ROOT, [".conf", ".json", ".yaml", ".yml"]);
+  if (Buffer.byteLength(String(body.config_content || ""), "utf8") > 256 * 1024) throw new Error("Config content is too large.");
 }
 
 app.get("/login", (req, res) => {
@@ -307,42 +301,65 @@ app.get("/login", (req, res) => {
   res.render("login", { messages, cacheBust: getCacheBust() });
 });
 
-app.post("/login", (req, res) => {
+const loginLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  key: (req) => `${req.ip}:${String(req.body && req.body.username || "").toLowerCase()}`,
+});
+
+app.post("/login", loginLimiter, requireCsrf, (req, res) => {
   const { username, password } = req.body;
+  if (typeof username !== "string" || typeof password !== "string" || username.length > 128 || password.length > 1024) {
+    audit("login.failure", { user: "invalid-input", ip: req.ip });
+    return res.status(400).send("Invalid credentials.");
+  }
+
+  const finishLogin = () => req.session.regenerate((error) => {
+    if (error) return res.status(500).send("Unable to create session.");
+    req.session.logged_in = true;
+    req.session.username = username;
+    req.session.absoluteExpiresAt = Date.now() + 12 * 60 * 60 * 1000;
+    req.session.csrfToken = crypto.randomBytes(32).toString("base64url");
+    audit("login.success", { user: username, ip: req.ip });
+    res.redirect("/");
+  });
 
   if (isLinux && pam) {
     pam.authenticate(username, password, (err) => {
-      if (!err) {
-        req.session.logged_in = true;
-        req.session.username = username;
-        return res.redirect("/");
+      if (!err && isAuthorizedAdmin(username)) {
+        return finishLogin();
       } else {
+        audit("login.failure", { user: String(username || ""), ip: req.ip });
         flash(req, "error", "Invalid credentials");
         return res.redirect("/login");
       }
     });
   } else {
     // fallback when PAM is unavailable or on non-Linux platforms
-    const TEST_USER = process.env.TEST_USER || "pi";
-    const TEST_PASS = process.env.TEST_PASS || "raspberry";
+    const TEST_USER = process.env.TEST_USER;
+    const TEST_PASS = process.env.TEST_PASS;
 
-    if (username === TEST_USER && password === TEST_PASS) {
-      req.session.logged_in = true;
-      req.session.username = username;
-      return res.redirect("/");
+    if (TEST_USER && TEST_PASS && username === TEST_USER && password === TEST_PASS) {
+      return finishLogin();
     } else {
+      audit("login.failure", { user: String(username || ""), ip: req.ip });
       flash(req, "error", "Invalid credentials");
       return res.redirect("/login");
     }
   }
 });
 
-app.get("/logout", (req, res) => {
-  req.session.destroy(() => res.redirect("/login"));
+app.post("/logout", requiresAuth, requireCsrf, (req, res) => {
+  const user = req.session.username;
+  req.session.destroy(() => {
+    audit("logout", { user, ip: req.ip });
+    res.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
+    res.redirect("/login");
+  });
 });
 
 app.get("/", requiresAuth, (req, res) => {
-  const cronOutput = safeExecSync("sudo crontab -l").toString();
+  const cronOutput = readCrontab();
   const cronLines = cronOutput.split(/\r?\n/);
   const paused = {};
   const status = {};
@@ -400,20 +417,23 @@ app.get("/", requiresAuth, (req, res) => {
   });
 });
 
-app.get("/run/:name", requiresAuth, (req, res) => {
+app.post("/run/:name", requiresAuth, requireCsrf, (req, res) => {
   const name = req.params.name;
   const script = SCRIPTS[name];
   if (script) {
     try {
+      validateManagedPath(script, SCRIPT_ROOT, [".sh"]);
       const configPath = CONFIG_PATHS[name];
+      if (configPath) validateManagedPath(configPath, CONFIG_ROOT, [".conf", ".json", ".yaml", ".yml"]);
       const args = ["/bin/bash", script];
       if (configPath) {
         args.push(configPath);
       }
-      safeSpawn("sudo", args, {
+      safeSpawn(args.shift(), args, {
         detached: true,
         stdio: "ignore",
       }).unref();
+      audit("job.started", { user: req.session.username, ip: req.ip, job: name });
       flash(req, "success", `✅ '${name}' started successfully.`);
     } catch (e) {
       flash(req, "error", `❌ Error: ${e}`);
@@ -428,7 +448,15 @@ app.get("/log/:name", requiresAuth, (req, res) => {
   const name = req.params.name;
   const logPath = LOGS[name];
   if (logPath && fs.existsSync(logPath)) {
-    const content = fs.readFileSync(logPath, "utf8").split(/\r?\n/).slice(-100);
+    try { validateManagedPath(logPath, LOG_ROOT, [".log"]); }
+    catch { return res.status(403).send("Log path is outside the managed directory."); }
+    const stats = fs.statSync(logPath);
+    const bytes = Math.min(stats.size, 256 * 1024);
+    const buffer = Buffer.alloc(bytes);
+    const fd = fs.openSync(logPath, "r");
+    fs.readSync(fd, buffer, 0, bytes, stats.size - bytes);
+    fs.closeSync(fd);
+    const content = buffer.toString("utf8").split(/\r?\n/).slice(-100);
     res.render("log", { name, content, cacheBust: getCacheBust() });
   } else {
     flash(req, "error", "❌ Log not found.");
@@ -441,9 +469,9 @@ app.get("/new", requiresAuth, (req, res) => {
   req.session.messages = [];
   const data = {
     name: "",
-    script: "/usr/local/bin/",
-    log: "/var/log/custom/",
-    lock: "/etc/",
+    script: path.join(SCRIPT_ROOT, "job.sh"),
+    log: path.join(LOG_ROOT, "job.log"),
+    lock: path.join(LOCK_ROOT, "job.lock"),
     timer: "* * * * *",
     content: "",
     config_path: "",
@@ -452,7 +480,7 @@ app.get("/new", requiresAuth, (req, res) => {
   res.render("form", { isNew: true, data, messages, cacheBust: getCacheBust() });
 });
 
-app.post("/new", requiresAuth, (req, res) => {
+app.post("/new", requiresAuth, requireCsrf, (req, res) => {
   const {
     name,
     script,
@@ -464,6 +492,8 @@ app.post("/new", requiresAuth, (req, res) => {
     config_content,
     config_enabled,
   } = req.body;
+  try { validateSubmittedJob(req.body); }
+  catch (error) { flash(req, "error", error.message); return res.redirect("/new"); }
   const normalized = (content || "").replace(/\r/g, "");
   try {
     writeFileWithSudo(script, normalized, "Failed to write script");
@@ -495,7 +525,7 @@ app.post("/new", requiresAuth, (req, res) => {
 
   let data;
   try {
-    data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8"));
+    data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
   } catch (e) {
     data = {};
   }
@@ -508,8 +538,7 @@ app.post("/new", requiresAuth, (req, res) => {
     data[name].config_path = configPath;
   }
   try {
-    fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
-    commitScriptsUpdate(`Add script ${name}`, [script, configPath]);
+    writeFileWithSudo(DATA_FILE, JSON.stringify(data, null, 2), "Failed to save metadata");
   } catch (e) {
     console.warn("⚠️ Failed to save scripts.json:", e.message);
   }
@@ -525,7 +554,7 @@ app.post("/new", requiresAuth, (req, res) => {
 
   let cronContent = "";
   try {
-    cronContent = safeExecSync("sudo crontab -l").toString();
+    cronContent = readCrontab();
   } catch (e) {
     cronContent = "";
   }
@@ -540,18 +569,14 @@ app.post("/new", requiresAuth, (req, res) => {
     cronContent += `\n${timer} ${buildCronCommand(script, configPath)} # ${cronKey}\n`;
   }
   try {
-    safeExecSync("sudo crontab -", { input: cronContent });
+    writeCrontab(cronContent);
   } catch (e) {
     flash(req, "error", `❌ Failed to update cron: ${e.message}`);
     return res.redirect("/");
   }
 
-  if (existing && existing.log && existing.log !== log) {
-    removeLogrotateConfig(existing.log);
-  }
-  writeLogrotateConfig(log, timer);
-
   loadCronTimers();
+  audit(existing ? "job.updated" : "job.created", { user: req.session.username, ip: req.ip, job: name });
 
   flash(req, "success", `✅ ${existing ? "Updated" : "Added"} script '${name}'.`);
   res.redirect("/");
@@ -560,6 +585,13 @@ app.post("/new", requiresAuth, (req, res) => {
 app.get("/edit/:name", requiresAuth, (req, res) => {
   const name = req.params.name;
   const scriptPath = SCRIPTS[name];
+  try {
+    validateManagedPath(scriptPath, SCRIPT_ROOT, [".sh"]);
+    if (CONFIG_PATHS[name]) validateManagedPath(CONFIG_PATHS[name], CONFIG_ROOT, [".conf", ".json", ".yaml", ".yml"]);
+  } catch {
+    flash(req, "error", "This legacy job must be migrated into the managed directories before editing.");
+    return res.redirect("/");
+  }
   if (!scriptPath || !fs.existsSync(scriptPath)) {
     flash(req, "error", "❌ Script not found.");
     return res.redirect("/");
@@ -594,7 +626,7 @@ app.get("/edit/:name", requiresAuth, (req, res) => {
   res.render("form", { isNew: false, data, messages, cacheBust: getCacheBust() });
 });
 
-app.post("/edit/:name", requiresAuth, (req, res) => {
+app.post("/edit/:name", requiresAuth, requireCsrf, (req, res) => {
   const oldName = req.params.name;
   const {
     name,
@@ -607,6 +639,8 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     config_content,
     config_enabled,
   } = req.body;
+  try { validateSubmittedJob(req.body); }
+  catch (error) { flash(req, "error", error.message); return res.redirect(`/edit/${encodeURIComponent(req.params.name)}`); }
   const scriptPath = script;
   const oldKey = CRON_KEYS[oldName];
   const oldLog = LOGS[oldName];
@@ -646,7 +680,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
 
   let data;
   try {
-    data = JSON.parse(fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8"));
+    data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
   } catch (e) {
     data = {};
   }
@@ -657,8 +691,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
     data[name].config_path = configPath;
   }
   try {
-    fs.writeFileSync(path.join(__dirname, "scripts.json"), JSON.stringify(data, null, 2));
-    commitScriptsUpdate(`Update script ${name}`, [scriptPath, configPath]);
+    writeFileWithSudo(DATA_FILE, JSON.stringify(data, null, 2), "Failed to save metadata");
   } catch (e) {
     console.warn("⚠️ Failed to save scripts.json:", e.message);
   }
@@ -682,7 +715,7 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
 
   let cronLines = [];
   try {
-    cronLines = safeExecSync("sudo crontab -l").toString().split(/\r?\n/);
+    cronLines = readCrontab().split(/\r?\n/);
   } catch (e) {
     cronLines = [];
   }
@@ -690,32 +723,31 @@ app.post("/edit/:name", requiresAuth, (req, res) => {
   filtered.push(`${timer} ${buildCronCommand(script, configPath)} # ${cronKey}`);
   const newCron = filtered.join("\n") + "\n";
   try {
-    safeExecSync("sudo crontab -", { input: newCron });
+    writeCrontab(newCron);
   } catch (e) {
     flash(req, "error", `❌ Failed to update cron: ${e.message}`);
     return res.redirect("/");
   }
 
-  removeLogrotateConfig(oldLog);
-  writeLogrotateConfig(log, timer);
   if (oldConfigPath && oldConfigPath !== configPath && !configPath) {
     CONFIG_PATHS[name] = "";
   }
 
   loadCronTimers();
+  audit("job.updated", { user: req.session.username, ip: req.ip, job: name, previousName: oldName });
 
   flash(req, "success", `✅ Saved '${name}' successfully.`);
   res.redirect("/");
 });
 
-app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
+app.post("/toggle_cron/:name", requiresAuth, requireCsrf, (req, res) => {
   const name = req.params.name;
   const tag = CRON_KEYS[name];
   if (!tag) {
     flash(req, "error", "❌ Unknown script tag.");
     return res.redirect("/");
   }
-  const cronLines = safeExecSync("sudo crontab -l").toString().split(/\r?\n/);
+  const cronLines = readCrontab().split(/\r?\n/);
   const updatedLines = [];
   let resumed = false;
   for (const line of cronLines) {
@@ -732,7 +764,8 @@ app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
     }
   }
   const newCron = updatedLines.join("\n") + "\n";
-  safeExecSync("sudo crontab -", { input: newCron });
+  writeCrontab(newCron);
+  audit("cron.toggled", { user: req.session.username, ip: req.ip, job: name, resumed });
   flash(
     req,
     "success",
@@ -741,15 +774,18 @@ app.get("/toggle_cron/:name", requiresAuth, (req, res) => {
   res.redirect("/");
 });
 
-app.post("/reorder", requiresAuth, (req, res) => {
+app.post("/reorder", requiresAuth, requireCsrf, (req, res) => {
   const { order } = req.body || {};
   if (!Array.isArray(order)) {
     return res.status(400).json({ error: "Invalid order" });
   }
+  if (order.length !== scriptOrder.length || new Set(order).size !== order.length || order.some((name) => !SCRIPTS[name])) {
+    return res.status(400).json({ error: "Order must include every known job exactly once" });
+  }
   let data;
   try {
     data = JSON.parse(
-      fs.readFileSync(path.join(__dirname, "scripts.json"), "utf8")
+      fs.readFileSync(DATA_FILE, "utf8")
     );
   } catch (e) {
     data = {};
@@ -758,25 +794,20 @@ app.post("/reorder", requiresAuth, (req, res) => {
     if (data[name]) data[name].order = idx;
   });
   try {
-    fs.writeFileSync(
-      path.join(__dirname, "scripts.json"),
-      JSON.stringify(data, null, 2)
-    );
+    writeFileWithSudo(DATA_FILE, JSON.stringify(data, null, 2), "Failed to save metadata");
   } catch (e) {
     return res.status(500).json({ error: "Failed to save order" });
   }
   scriptOrder = order;
-  commitScriptsUpdate("chore: update script order");
+  audit("jobs.reordered", { user: req.session.username, ip: req.ip, jobs: order.length });
 
   res.json({ success: true });
 });
 
-app.post("/update", requiresAuth, (req, res) => {
+app.post("/update", requiresAuth, requireCsrf, (req, res) => {
   try {
-    safeSpawn("/bin/bash", ["/home/pi/pi-script-dashboard/update_dashboard.sh"], {
-      detached: true,
-      stdio: "ignore",
-    }).unref();
+    fs.writeFileSync(updateRequestFile, `${new Date().toISOString()}\n`, { encoding: "utf8", mode: 0o600 });
+    audit("dashboard.update_requested", { user: req.session.username, ip: req.ip });
     res.redirect("/?updated=true");
   } catch (e) {
     flash(req, "error", `❌ Failed to run update script: ${e}`);
@@ -785,11 +816,20 @@ app.post("/update", requiresAuth, (req, res) => {
 });
 
 app.get("/update-status", requiresAuth, (req, res) => {
-  const updating = fs.existsSync("/tmp/dashboard-update.lock");
+  const updating = fs.existsSync(lockFile);
   res.json({ updating });
 });
 
-const port = process.env.PORT || 8080;
-app.listen(port, "0.0.0.0", () =>
-  console.log("Server running on port " + port)
-);
+app.use((req, res) => res.status(404).send("Not found."));
+app.use((error, req, res, next) => {
+  audit("request.error", { user: req.session && req.session.username, ip: req.ip, method: req.method, path: req.path, status: error.status || 500 });
+  if (res.headersSent) return next(error);
+  res.status(error.status || 500).send(error.status === 413 ? "Request is too large." : "The request could not be completed.");
+});
+
+const port = Number(process.env.PORT || 8080);
+if (require.main === module) {
+  app.listen(port, "127.0.0.1", () => console.log("Server running on 127.0.0.1:" + port));
+}
+
+module.exports = { app };

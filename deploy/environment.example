@@ -1,0 +1,12 @@
+# Install as /etc/pi-script-dashboard/environment, owner root:root, mode 0600.
+SESSION_SECRET=replace-with-at-least-32-random-bytes
+ADMIN_GROUP=pi-dashboard-admins
+TRUSTED_HOSTS=dashboard.example.com
+PORT=8080
+SCRIPT_ROOT=/var/lib/pi-script-dashboard/scripts
+CONFIG_ROOT=/var/lib/pi-script-dashboard/configs
+LOG_ROOT=/var/log/pi-script-dashboard
+LOCK_ROOT=/run/pi-script-dashboard
+DATA_FILE=/var/lib/pi-script-dashboard/scripts.json
+SESSION_DIR=/var/lib/pi-script-dashboard/sessions
+AUDIT_LOG=/var/log/pi-script-dashboard/audit.jsonl
