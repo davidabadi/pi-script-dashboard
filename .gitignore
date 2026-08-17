@@ -10,3 +10,10 @@ update_dashboard.sh
 # Local runtime/test state
 .runtime/
 coverage/
+
+# Deployment secrets must live outside the repository. These patterns are a
+# final guardrail in case a private values file is accidentally copied here.
+deployment-private.env
+private-deployment-values.*
+!deploy/private-deployment-values.example
+secrets/

@@ -10,10 +10,16 @@ Group=pi-dashboard
 WorkingDirectory=/opt/pi-script-dashboard
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/pi-script-dashboard/environment
-ExecStart=/usr/bin/node /opt/pi-script-dashboard/server.js
+ExecStart=/usr/local/bin/node /opt/pi-script-dashboard/server.js
 Restart=on-failure
 RestartSec=5s
 UMask=0077
+StateDirectory=pi-script-dashboard
+StateDirectoryMode=0700
+LogsDirectory=pi-script-dashboard
+LogsDirectoryMode=0700
+RuntimeDirectory=pi-script-dashboard
+RuntimeDirectoryMode=0700
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict

@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Deployment artifacts execute on Linux and must retain Unix line endings.
+deploy/* text eol=lf

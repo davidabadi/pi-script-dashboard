@@ -1,0 +1,24 @@
+# NON-SECRET TEMPLATE ONLY. Copy this to your private file share, outside the
+# Git repository, rename it private-deployment-values.env, and fill it there.
+DASHBOARD_HOST=dashboard.example.com
+PI_HOSTNAME=raspberrypi.local
+PI_ADMIN_USER=pi
+CLOUDFLARE_TUNNEL_NAME=pi-script-dashboard
+CLOUDFLARE_TUNNEL_ID=replace-with-tunnel-uuid
+CLOUDFLARE_ACCOUNT_ID=replace-with-account-id
+CLOUDFLARE_ZONE_ID=replace-with-zone-id
+CLOUDFLARE_ACCESS_ADMINS=admin@example.com
+PRIVATE_BACKUP_DESTINATION=replace-with-private-share-or-scp-destination
+EXPECTED_DEPLOY_COMMIT=replace-with-reviewed-origin-main-commit
+OLD_DASHBOARD_SERVICE=pi-script-dashboard.service
+OLD_DASHBOARD_PATH=/home/pi/pi-script-dashboard
+SSH_KEY_FILENAME=replace-with-required-private-key-filename
+CRON_UNRAID=replace-with-five-field-schedule
+CRON_POSTGRES=replace-with-five-field-schedule
+CRON_CONABADI=replace-with-five-field-schedule
+CRON_LAZO=replace-with-five-field-schedule
+
+# Do not put PAM passwords here. Prefer a password manager for passwords and
+# SSH private keys. The application SESSION_SECRET is generated directly into
+# /etc/pi-script-dashboard/environment and does not need to be copied here;
+# rotating it only signs out existing dashboard sessions.
