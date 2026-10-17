@@ -69,7 +69,7 @@ chmod 0750 "$run_dir"
 daemon_pid=''
 
 stop_daemon() {
-  local recorded_pid
+  local recorded_pid daemon_exe daemon_cwd
   [[ -f "$run_dir/saslauthd.pid" ]] || return 0
   IFS= read -r recorded_pid < "$run_dir/saslauthd.pid"
   [[ "$recorded_pid" =~ ^[1-9][0-9]*$ && "$recorded_pid" -gt 1 ]] || return 1
@@ -79,8 +79,21 @@ stop_daemon() {
   fi
   if [[ -d "/proc/$recorded_pid" ]]; then
     # Never use killall/pkill or signal a PID without checking fixture identity.
-    [[ "$(readlink -f "/proc/$recorded_pid/exe")" == "$(readlink -f /usr/sbin/saslauthd)" ]] || return 1
-    [[ "$(readlink -f "/proc/$recorded_pid/cwd")" == "$run_dir" ]] || return 1
+    # /proc links require matching filesystem UID *and GID* without SYS_PTRACE.
+    # Match the daemon's root:pi-dashboard credentials in ordinary Docker;
+    # retaining these checks must not require adding a container capability.
+    if ! daemon_exe="$(runuser -u root -g pi-dashboard -- readlink -f "/proc/$recorded_pid/exe")"; then
+      printf 'Refusing to stop fixture daemon: cannot inspect its executable.\n' >&2
+      return 1
+    fi
+    if ! daemon_cwd="$(runuser -u root -g pi-dashboard -- readlink -f "/proc/$recorded_pid/cwd")"; then
+      printf 'Refusing to stop fixture daemon: cannot inspect its working directory.\n' >&2
+      return 1
+    fi
+    if [[ "$daemon_exe" != "$(readlink -f /usr/sbin/saslauthd)" || "$daemon_cwd" != "$run_dir" ]]; then
+      printf 'Refusing to stop a process whose executable or working directory differs from the fixture.\n' >&2
+      return 1
+    fi
     kill -TERM "$recorded_pid" || return 1
   fi
   for ((attempt = 0; attempt < 100; attempt++)); do
@@ -174,6 +187,18 @@ printf '%s\n' "$service_cron" | runuser -u "$service_user" -- crontab -
 [[ "$(runuser -u "$service_user" -- crontab -l)" == "$service_cron" ]] || fail 'service-user cron resume failed'
 [[ "$(crontab -u root -l)" == "$root_cron_before" ]] || fail 'service-user operations changed root crontab'
 printf 'PASS: service-user cron install/pause/resume preserves root crontab\n'
+
+# A changed PID file must never turn cleanup into a signal to another process.
+expected_daemon_pid="$daemon_pid"
+printf '%s\n' "$$" > "$run_dir/saslauthd.pid"
+unexpected_cleanup_acceptance=false
+if stop_daemon 2>/dev/null; then
+  unexpected_cleanup_acceptance=true
+fi
+printf '%s\n' "$expected_daemon_pid" > "$run_dir/saslauthd.pid"
+[[ "$unexpected_cleanup_acceptance" == false ]] || fail 'cleanup accepted a changed fixture PID'
+kill -0 "$expected_daemon_pid" || fail 'cleanup stopped the broker while rejecting a changed PID'
+printf 'PASS: cleanup rejects a changed PID without stopping the broker\n'
 
 stop_daemon || fail 'could not safely stop the fixture authentication daemon'
 runuser -u "$service_user" -- node - "$repo_root/saslauthd.js" "$run_dir/mux" <<'JS'
