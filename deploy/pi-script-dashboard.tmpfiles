@@ -1,0 +1,2 @@
+# Cron jobs need this directory even when the dashboard is stopped or restarted.
+d /run/pi-script-dashboard 0700 pi-dashboard pi-dashboard -

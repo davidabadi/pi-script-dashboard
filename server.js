@@ -11,6 +11,7 @@ const {
   securityHeaders, shellQuote, stableJobId, validateCron, validateManagedPath,
   validateName,
 } = require("./security");
+const { authenticate: authenticatePam, checkSocket } = require("./saslauthd");
 require("dotenv").config();
 const isLinux = os.platform() === "linux";
 const isProduction = process.env.NODE_ENV === "production";
@@ -23,6 +24,7 @@ const DATA_FILE = process.env.DATA_FILE || path.join(runtimeRoot, "scripts.json"
 const AUDIT_LOG = process.env.AUDIT_LOG || path.join(LOG_ROOT, "audit.jsonl");
 const SESSION_DIR = process.env.SESSION_DIR || path.join(runtimeRoot, "sessions");
 const ADMIN_GROUP = process.env.ADMIN_GROUP || "pi-dashboard-admins";
+const PAM_SOCKET = process.env.PAM_SOCKET || "/run/pi-dashboard-auth/mux";
 const TRUSTED_HOSTS = (process.env.TRUSTED_HOSTS || "localhost:8080,127.0.0.1:8080").split(",").map((value) => value.trim()).filter(Boolean);
 const SESSION_COOKIE_NAME = isProduction ? "__Host-pi_dashboard" : "pi_dashboard";
 
@@ -112,21 +114,16 @@ if (fs.existsSync(lockFile)) {
   }
 }
 
-let pam;
-if (isLinux) {
-  try {
-    pam = require("authenticate-pam");
-  } catch (e) {
-    console.warn("⚠️ 'authenticate-pam' not available. Using test login.");
-  }
-} else {
+if (isProduction) {
+  if (!isLinux) throw new Error("PAM authentication requires Linux in production.");
+  checkSocket(PAM_SOCKET);
+} else if (!isLinux) {
   console.warn("⚠️ PAM is disabled — using test login for development.");
 }
-if (isProduction && !pam) throw new Error("PAM authentication is required in production.");
 
 function isAuthorizedAdmin(username) {
   if (!isLinux) return !isProduction;
-  const result = safeSpawnSync("id", ["-nG", username], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const result = safeSpawnSync("id", ["-nG", "--", username], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   if (result.status !== 0) return false;
   return String(result.stdout || "").trim().split(/\s+/).includes(ADMIN_GROUP);
 }
@@ -307,45 +304,40 @@ const loginLimiter = createRateLimiter({
   key: (req) => `${req.ip}:${String(req.body && req.body.username || "").toLowerCase()}`,
 });
 
-app.post("/login", loginLimiter, requireCsrf, (req, res) => {
-  const { username, password } = req.body;
-  if (typeof username !== "string" || typeof password !== "string" || username.length > 128 || password.length > 1024) {
-    audit("login.failure", { user: "invalid-input", ip: req.ip });
-    return res.status(400).send("Invalid credentials.");
-  }
-
-  const finishLogin = () => req.session.regenerate((error) => {
-    if (error) return res.status(500).send("Unable to create session.");
-    req.session.logged_in = true;
-    req.session.username = username;
-    req.session.absoluteExpiresAt = Date.now() + 12 * 60 * 60 * 1000;
-    req.session.csrfToken = crypto.randomBytes(32).toString("base64url");
-    audit("login.success", { user: username, ip: req.ip });
-    res.redirect("/");
-  });
-
-  if (isLinux && pam) {
-    pam.authenticate(username, password, (err) => {
-      if (!err && isAuthorizedAdmin(username)) {
-        return finishLogin();
-      } else {
-        audit("login.failure", { user: String(username || ""), ip: req.ip });
-        flash(req, "error", "Invalid credentials");
-        return res.redirect("/login");
-      }
-    });
-  } else {
-    // fallback when PAM is unavailable or on non-Linux platforms
-    const TEST_USER = process.env.TEST_USER;
-    const TEST_PASS = process.env.TEST_PASS;
-
-    if (TEST_USER && TEST_PASS && username === TEST_USER && password === TEST_PASS) {
-      return finishLogin();
-    } else {
-      audit("login.failure", { user: String(username || ""), ip: req.ip });
-      flash(req, "error", "Invalid credentials");
-      return res.redirect("/login");
+app.post("/login", loginLimiter, requireCsrf, async (req, res, next) => {
+  try {
+    const { username, password } = req.body;
+    if (
+      typeof username !== "string" ||
+      !/^[A-Za-z_][A-Za-z0-9_.-]{0,127}\$?$/.test(username) ||
+      Buffer.byteLength(username) > 128 ||
+      typeof password !== "string" ||
+      password.includes("\0") ||
+      Buffer.byteLength(password) > 256
+    ) {
+      audit("login.failure", { user: "invalid-input", ip: req.ip });
+      return res.status(400).send("Invalid credentials.");
     }
+
+    const finishLogin = () => req.session.regenerate((error) => {
+      if (error) return res.status(500).send("Unable to create session.");
+      req.session.logged_in = true;
+      req.session.username = username;
+      req.session.absoluteExpiresAt = Date.now() + 12 * 60 * 60 * 1000;
+      req.session.csrfToken = crypto.randomBytes(32).toString("base64url");
+      audit("login.success", { user: username, ip: req.ip });
+      res.redirect("/");
+    });
+
+    const authenticated = isLinux
+      ? isAuthorizedAdmin(username) && await authenticatePam(username, password, { socketPath: PAM_SOCKET })
+      : Boolean(process.env.TEST_USER && process.env.TEST_PASS && username === process.env.TEST_USER && password === process.env.TEST_PASS);
+    if (authenticated) return finishLogin();
+    audit("login.failure", { user: username, ip: req.ip });
+    flash(req, "error", "Invalid credentials");
+    return res.redirect("/login");
+  } catch (error) {
+    next(error);
   }
 });
 

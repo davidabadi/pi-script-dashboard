@@ -1,0 +1,32 @@
+[Unit]
+Description=Pi Script Dashboard PAM authentication broker
+After=systemd-user-sessions.service
+
+[Service]
+Type=forking
+User=root
+Group=pi-dashboard
+RuntimeDirectory=pi-dashboard-auth
+RuntimeDirectoryMode=0750
+PIDFile=/run/pi-dashboard-auth/saslauthd.pid
+ExecStart=/usr/sbin/saslauthd -a pam -m /run/pi-dashboard-auth -n 2
+# Debian 12's daemon forks before binding the socket. Bound startup waits here.
+ExecStartPost=/bin/sh -ec 'until [ -S /run/pi-dashboard-auth/mux ]; do sleep 0.1; done; chmod 0660 /run/pi-dashboard-auth/mux'
+TimeoutStartSec=15s
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/run/pi-dashboard-auth
+
+[Install]
+WantedBy=multi-user.target

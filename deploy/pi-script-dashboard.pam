@@ -1,0 +1,6 @@
+#%PAM-1.0
+# Root-owned profile used by the packaged saslauthd daemon, never by Node as root.
+auth requisite pam_succeed_if.so quiet user ingroup pi-dashboard-admins
+@include common-auth
+account requisite pam_succeed_if.so quiet user ingroup pi-dashboard-admins
+@include common-account

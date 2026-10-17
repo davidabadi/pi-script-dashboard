@@ -1,6 +1,7 @@
 # Install as /etc/pi-script-dashboard/environment, owner root:root, mode 0600.
 SESSION_SECRET=replace-with-at-least-32-random-bytes
 ADMIN_GROUP=pi-dashboard-admins
+PAM_SOCKET=/run/pi-dashboard-auth/mux
 TRUSTED_HOSTS=dashboard.example.com
 PORT=8080
 SCRIPT_ROOT=/var/lib/pi-script-dashboard/scripts

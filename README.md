@@ -5,7 +5,7 @@ This repository contains a hardened web console for running and scheduling maint
 - the Node process listens only on `127.0.0.1:8080`;
 - Cloudflare Tunnel publishes that loopback service;
 - Cloudflare Access with MFA is the first authentication gate;
-- PAM plus membership in `pi-dashboard-admins` is the second gate;
+- a dedicated PAM authentication broker plus membership in `pi-dashboard-admins` is the second gate;
 - editable jobs run as the unprivileged `pi-dashboard` account;
 - scripts, configs, logs, locks, sessions, and runtime metadata are confined to dedicated directories.
 
@@ -195,7 +195,7 @@ sudo ss -ltnp '( sport = :8080 )' || true
 echo "=== Existing dashboard processes ==="
 ps -ef | grep -E '[n]ode .*pi-script-dashboard|[c]loudflared' || true
 echo "=== Existing dashboard units ==="
-systemctl list-unit-files | grep -Ei 'pi.*script.*dashboard|cloudflared' || true
+systemctl list-unit-files | grep -Ei 'dashboard|cloudflared' || true
 ```
 
 What to expect:
@@ -219,6 +219,17 @@ Red flags — stop if:
 
 Save a concise preflight record in the private runbook: OS version, architecture, current dashboard service name, current checkout path, and current Git commit.
 
+Set the old unit name and checkout path from that record. Older installations use `script-dashboard.service`; change this value if your preflight found another name:
+
+```bash
+OLD_DASHBOARD_SERVICE="script-dashboard.service"
+OLD_REPO="/home/pi/pi-script-dashboard"
+git -C "$OLD_REPO" rev-parse HEAD
+git -C "$OLD_REPO" status --short
+```
+
+Keep local changes such as a modified `scripts.json` intact. A fresh checkout under `/opt` will be used for the replacement.
+
 ## 5. Create an off-device rollback backup
 
 The backup contains scripts and configuration secrets. It must end up on the private file share, not in Git.
@@ -239,21 +250,33 @@ Capture the current deployment. Missing optional paths are acceptable; unexpecte
 
 ```bash
 sudo sh -c "crontab -l > '$BACKUP_ROOT/root-crontab.txt' 2>&1 || true"
-sudo sh -c "systemctl cat pi-script-dashboard.service > '$BACKUP_ROOT/old-service.txt' 2>&1 || true"
+sudo sh -c "systemctl cat '$OLD_DASHBOARD_SERVICE' > '$BACKUP_ROOT/old-service.txt'"
+for unit in "$OLD_DASHBOARD_SERVICE" cloudflared.service; do
+  while IFS= read -r source; do
+    if [ -n "$source" ]; then
+      sudo sh -c 'cd /; cp -a --parents -- "$1" "$2"' sh "$source" "$BACKUP_ROOT"
+    fi
+  done < <(systemctl show "$unit" -p FragmentPath -p DropInPaths --value | tr ' ' '\n')
+done
 sudo sh -c "ss -ltnp > '$BACKUP_ROOT/listeners.txt'"
 sudo sh -c "ps -ef > '$BACKUP_ROOT/processes.txt'"
 
 for source in \
-  /home/pi/pi-script-dashboard \
+  "$OLD_REPO" \
   /opt/pi-script-dashboard \
   /usr/local/bin/backup_unraid.sh \
   /usr/local/bin/backup_unraid_postgresql_db.sh \
   /usr/local/bin/backup_forge_server.sh \
   /usr/local/bin/update_and_reboot.sh \
   /home/pi/backup-configs \
-  /var/log/custom; do
+  /var/log/custom \
+  /etc/crontab \
+  /etc/cron.d \
+  /etc/cloudflared \
+  /home/pi/.cloudflared \
+  /root/.cloudflared; do
   if sudo test -e "$source"; then
-    sudo cp -a --parents "$source" "$BACKUP_ROOT"
+    sudo sh -c 'cd /; cp -a --parents -- "$1" "$2"' sh "$source" "$BACKUP_ROOT"
   else
     echo "Not present: $source"
   fi
@@ -269,6 +292,8 @@ What to expect:
 - The loop says `Not present` only for genuinely unused paths.
 - The archive should normally be larger than a few kilobytes.
 - `sha256sum` prints a 64-character checksum followed by the archive path.
+
+The `cd /` in the copy command avoids a `cp --parents` path-resolution bug on Debian 12. If your modified registry uses other script/config paths, include those actual files as well. Back up the old unit's source file and drop-ins, both `root` and administrator crontabs, tunnel configuration/credentials, and any job SSH keys in the same private archive before changing them.
 
 Red flags — stop if:
 
@@ -311,33 +336,16 @@ Remove only the temporary admin-home copies after verification; retain the root 
 rm -f "/home/$(id -un)/pi-script-dashboard-backup-${MIGRATION_ID}.tar.gz" "/home/$(id -un)/pi-script-dashboard-backup-${MIGRATION_ID}.tar.gz.sha256"
 ```
 
-## 6. Stop the old dashboard without removing it
+## 6. Record how to stop and restore the old dashboard
 
 On the **Pi**, inspect the unit before stopping it:
 
 ```bash
-sudo systemctl status pi-script-dashboard.service --no-pager || true
-sudo systemctl cat pi-script-dashboard.service || true
+sudo systemctl status "$OLD_DASHBOARD_SERVICE" --no-pager || true
+sudo systemctl cat "$OLD_DASHBOARD_SERVICE"
 ```
 
-If the old deployment uses that service name, stop and disable it temporarily:
-
-```bash
-sudo systemctl stop pi-script-dashboard.service
-sudo systemctl disable pi-script-dashboard.service
-sudo ss -ltnp '( sport = :8080 )' || true
-```
-
-What to expect:
-
-- Stopping the service returns silently.
-- The final `ss` command prints no listener on port 8080.
-
-Red flags — stop if:
-
-- port 8080 remains occupied;
-- systemd immediately restarts the old process through a differently named supervisor;
-- you cannot identify how to restore the old service.
+Keep this service running during preparation. Step 16 stops it and verifies port 8080 is free before starting the replacement. Stop preparation if you cannot identify how to restore the old service. If the old and new units have the same name, preserve the old unit and its drop-ins before Step 12 replaces them; do not restart it during preparation.
 
 Do not delete the old checkout, old unit, root crontab, scripts, or configs yet.
 
@@ -348,15 +356,14 @@ Run on the **Pi**:
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  build-essential \
   ca-certificates \
   cron \
   curl \
   git \
-  libpam0g-dev \
   logrotate \
   openssl \
   python3 \
+  sasl2-bin \
   xz-utils
 ```
 
@@ -369,14 +376,14 @@ git --version
 curl --version | head -n 1
 openssl version
 python3 --version
-dpkg-query -W libpam0g-dev cron logrotate
+dpkg-query -W sasl2-bin cron logrotate
 ```
 
-Red flags — stop if package signatures fail, the system proposes removing core packages, or `libpam0g-dev` cannot be installed.
+Red flags — stop if package signatures fail, the system proposes removing core packages, or `sasl2-bin` cannot be installed. The application uses a Unix socket client and no longer needs a native Node PAM addon or PAM development headers. The packaged `saslauthd` binary runs in the dedicated unit installed in Step 12; do not enable a separate, globally configured `saslauthd.service` for this dashboard.
 
 ## 8. Install checksum-verified Node.js 24
 
-The shipped service uses `/usr/local/bin/node`. This procedure downloads the current Node 24 LTS archive from `nodejs.org`, verifies it against the official SHA-256 manifest, installs it under `/opt`, and creates stable symlinks.
+The shipped service uses `/usr/local/bin/node`. This procedure downloads the current Node 24 LTS archive from `nodejs.org`, verifies it against the official SHA-256 manifest, and installs it under `/opt`. Use its versioned directory during preparation; switch the stable symlinks only after the old service is stopped in Step 16.
 
 Run on the **Pi**:
 
@@ -402,21 +409,18 @@ grep " $NODE_ARCHIVE$" SHASUMS256.txt | sha256sum --check --strict -
 
 NODE_DIR="${NODE_ARCHIVE%.tar.xz}"
 sudo tar -xJf "$NODE_ARCHIVE" -C /opt
-sudo ln -sfn "/opt/$NODE_DIR/bin/node" /usr/local/bin/node
-sudo ln -sfn "/opt/$NODE_DIR/bin/npm" /usr/local/bin/npm
-sudo ln -sfn "/opt/$NODE_DIR/bin/npx" /usr/local/bin/npx
-hash -r
+NODE_BIN_DIR="/opt/$NODE_DIR/bin"
 
-/usr/local/bin/node --version
-/usr/local/bin/npm --version
-readlink -f /usr/local/bin/node
+"$NODE_BIN_DIR/node" --version
+env PATH="$NODE_BIN_DIR:/usr/bin:/bin" "$NODE_BIN_DIR/npm" --version
+readlink -f "$NODE_BIN_DIR/node"
 ```
 
 What to expect:
 
 - The archive name resembles `node-v24.x.y-linux-arm64.tar.xz`.
 - Checksum verification prints `OK`.
-- `node --version` starts with `v24.`.
+- The versioned `node --version` starts with `v24.`; the old service's Node installation is unchanged during preparation.
 - `readlink` resolves beneath `/opt/node-v24...`.
 
 Red flags — stop if:
@@ -435,6 +439,8 @@ rm -rf -- "$NODE_WORK"
 ```
 
 The target is the unique `mktemp` directory printed into `NODE_WORK`; never replace that command with a broad path.
+
+Record `NODE_BIN_DIR` in the private deployment record so it can be restored after reconnecting SSH.
 
 ## 9. Create the service and administrator groups
 
@@ -538,14 +544,14 @@ Install and validate dependencies:
 
 ```bash
 cd /opt/pi-script-dashboard
-sudo -u pi-dashboard env PATH=/usr/local/bin:/usr/bin:/bin \
-  /usr/local/bin/npm ci
-sudo -u pi-dashboard env PATH=/usr/local/bin:/usr/bin:/bin \
-  /usr/local/bin/npm run check
-sudo -u pi-dashboard env PATH=/usr/local/bin:/usr/bin:/bin \
-  /usr/local/bin/npm run audit:production
-sudo -u pi-dashboard env PATH=/usr/local/bin:/usr/bin:/bin \
-  /usr/local/bin/npm run build:css
+sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" ci
+sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" run check
+sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" run audit:production
+sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" run build:css
 sudo -u pi-dashboard git diff --exit-code -- public/tailwind.css
 ```
 
@@ -559,27 +565,23 @@ What to expect:
 Red flags — stop if:
 
 - npm modifies `package-lock.json` during `npm ci`;
-- `authenticate-pam` compilation fails, even if npm labels it optional;
 - any test fails;
 - the audit reports a high or critical vulnerability;
 - generated CSS differs from the tracked file.
 
-Verify PAM loaded, then remove development-only packages:
+Remove development-only packages after validation. The authentication broker is installed and tested separately in Step 12:
 
 ```bash
-sudo -u pi-dashboard env PATH=/usr/local/bin:/usr/bin:/bin \
-  /usr/local/bin/node -e "require('authenticate-pam'); console.log('authenticate-pam loaded')"
-sudo -u pi-dashboard env PATH=/usr/local/bin:/usr/bin:/bin \
-  /usr/local/bin/npm prune --omit=dev
+sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" prune --omit=dev
 sudo -u pi-dashboard git -C /opt/pi-script-dashboard status --short
 ```
 
 Expected:
 
-- `authenticate-pam loaded`.
 - Final Git status is empty.
 
-Red flag: do not start production with PAM missing; production startup deliberately fails closed.
+Red flag: do not start production until the broker can authenticate the intended administrator from the `pi-dashboard` account. Loading a PAM library or authenticating as root does not test that boundary.
 
 ## 11. Create the root-only application environment
 
@@ -600,6 +602,7 @@ sudo sh -c "
   cat > /etc/pi-script-dashboard/environment <<EOF
 SESSION_SECRET=\$secret
 ADMIN_GROUP=pi-dashboard-admins
+PAM_SOCKET=/run/pi-dashboard-auth/mux
 TRUSTED_HOSTS=$DASHBOARD_HOST
 PORT=8080
 SCRIPT_ROOT=/var/lib/pi-script-dashboard/scripts
@@ -640,13 +643,26 @@ Red flags — stop if:
 
 Never run `cat /etc/pi-script-dashboard/environment` in a recorded terminal or paste its output into support requests.
 
-## 12. Install systemd, logrotate, and update units
+## 12. Install and test the authentication broker and service units
+
+An unprivileged process cannot normally verify another local user's password with Debian's `pam_unix`. Node therefore sends authentication requests over a local Unix socket to the packaged `saslauthd` daemon. The broker runs as root while Node remains unprivileged. The application client always selects the root-owned `pi-script-dashboard` PAM profile, which requires `pi-dashboard-admins` membership for authentication and account checks. The application also checks group membership independently.
+
+The socket is inside `/run/pi-dashboard-auth`, owned by `root:pi-dashboard` with mode `0750`. `saslauthd` creates the socket itself with permissive mode bits; the protected parent directory controls who can connect and prevents the service account from replacing it. Do not give `pi-dashboard` ownership or write permission on that directory.
 
 Run from `/opt/pi-script-dashboard` on the **Pi**:
 
 ```bash
 cd /opt/pi-script-dashboard
 
+sudo install -o root -g root -m 0644 \
+  deploy/pi-script-dashboard-auth.service \
+  /etc/systemd/system/pi-script-dashboard-auth.service
+sudo install -o root -g root -m 0644 \
+  deploy/pi-script-dashboard.pam \
+  /etc/pam.d/pi-script-dashboard
+sudo install -o root -g root -m 0644 \
+  deploy/pi-script-dashboard.tmpfiles \
+  /etc/tmpfiles.d/pi-script-dashboard.conf
 sudo install -o root -g root -m 0644 \
   deploy/pi-script-dashboard.service \
   /etc/systemd/system/pi-script-dashboard.service
@@ -665,6 +681,7 @@ sudo install -o root -g root -m 0644 \
   /etc/logrotate.d/pi-script-dashboard
 
 sudo systemd-analyze verify \
+  /etc/systemd/system/pi-script-dashboard-auth.service \
   /etc/systemd/system/pi-script-dashboard.service \
   /etc/systemd/system/pi-script-dashboard-update.path \
   /etc/systemd/system/pi-script-dashboard-update.service
@@ -680,6 +697,7 @@ What to expect:
 Red flags — stop if:
 
 - the update helper is writable by `pi-dashboard` or any non-root user;
+- the broker unit or PAM profile is writable by a non-root user;
 - a unit runs the web application as root;
 - `ExecStart` does not point to `/usr/local/bin/node`;
 - systemd reports unknown directives or invalid paths;
@@ -689,6 +707,9 @@ Inspect permissions:
 
 ```bash
 stat -c '%U %G %a %n' \
+  /etc/systemd/system/pi-script-dashboard-auth.service \
+  /etc/pam.d/pi-script-dashboard \
+  /etc/tmpfiles.d/pi-script-dashboard.conf \
   /etc/systemd/system/pi-script-dashboard.service \
   /etc/systemd/system/pi-script-dashboard-update.path \
   /etc/systemd/system/pi-script-dashboard-update.service \
@@ -698,12 +719,17 @@ stat -c '%U %G %a %n' \
 
 Expected: every file is owned by `root root`; units/logrotate are `644`; helper is `755`.
 
-Reload systemd and let it create protected runtime directories, but do not start the web service yet:
+Create protected application directories explicitly. `systemd-tmpfiles` recreates the lock directory at boot and keeps it available when cron runs while the web service is stopped:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl start pi-script-dashboard.service
-sudo systemctl stop pi-script-dashboard.service
+sudo install -d -o pi-dashboard -g pi-dashboard -m 0700 \
+  /var/lib/pi-script-dashboard \
+  /var/lib/pi-script-dashboard/scripts \
+  /var/lib/pi-script-dashboard/configs \
+  /var/lib/pi-script-dashboard/sessions \
+  /var/log/pi-script-dashboard
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/pi-script-dashboard.conf
 sudo stat -c '%U %G %a %n' \
   /var/lib/pi-script-dashboard \
   /var/log/pi-script-dashboard \
@@ -712,7 +738,21 @@ sudo stat -c '%U %G %a %n' \
 
 What to expect: all three directories are owned by `pi-dashboard pi-dashboard` with mode `700`.
 
-The first start may fail because legacy `scripts.json` paths have not been migrated yet; that is acceptable only at this point. Directory ownership or environment failures are not acceptable.
+Start the authentication broker and check its protected socket before starting the web service:
+
+```bash
+sudo systemctl enable --now pi-script-dashboard-auth.service
+sudo systemctl status pi-script-dashboard-auth.service --no-pager --full
+sudo stat -c '%U %G %a %n' /run/pi-dashboard-auth
+sudo -u pi-dashboard test -S /run/pi-dashboard-auth/mux
+sudo -u pi-dashboard test ! -w /run/pi-dashboard-auth
+sudo -u pi-dashboard -H python3 \
+  /opt/pi-script-dashboard/deploy/check-pam-login.py "$ADMIN_USER"
+```
+
+Enter the administrator's Linux password only at the interactive prompt. The check keeps the password out of command arguments and shell history. Expected: authentication succeeds, and the socket directory is `root pi-dashboard 750`. A wrong password or a user outside `pi-dashboard-admins` must be rejected. If authentication fails, inspect the broker journal and fix the cause before cutover; do not add the web account to `shadow`, grant it `sudo`, or run Node as root. The earlier `sudo -u pi-dashboard pamtester login ...` test may still fail because it bypasses this broker.
+
+Usernames are limited to 128 UTF-8 bytes and passwords to 256 UTF-8 bytes by the socket client/protocol. Passwords are never truncated to fit. Treat access to this socket as part of the trusted dashboard service account: another process running as `pi-dashboard` can connect to the same authentication daemon.
 
 ## 13. Migrate editable jobs into restricted directories
 
@@ -806,8 +846,9 @@ What to expect: any matches identify lines that must be deliberately updated. Us
 sudoedit /var/lib/pi-script-dashboard/scripts/backup_unraid.sh
 sudoedit /var/lib/pi-script-dashboard/scripts/backup_unraid_postgresql_db.sh
 sudoedit /var/lib/pi-script-dashboard/scripts/backup_forge_server.sh
-sudo chown pi-dashboard:pi-dashboard /var/lib/pi-script-dashboard/scripts/*.sh
-sudo chmod 0700 /var/lib/pi-script-dashboard/scripts/*.sh
+sudo find /var/lib/pi-script-dashboard/scripts -maxdepth 1 -type f -name '*.sh' \
+  -exec chown pi-dashboard:pi-dashboard {} + \
+  -exec chmod 0700 {} +
 ```
 
 Required replacements inside scripts:
@@ -822,10 +863,13 @@ Red flags — do not continue while an editable script contains `sudo`, `reboot`
 Syntax-check without executing jobs:
 
 ```bash
-for script in /var/lib/pi-script-dashboard/scripts/*.sh; do
-  echo "Checking $script"
-  sudo -u pi-dashboard /bin/bash -n "$script"
-done
+sudo -u pi-dashboard /bin/bash -c '
+  set -e
+  for script in /var/lib/pi-script-dashboard/scripts/*.sh; do
+    echo "Checking $script"
+    /bin/bash -n "$script"
+  done
+'
 ```
 
 Expected: each filename is printed and no syntax errors follow.
@@ -869,7 +913,7 @@ sudo tee /var/lib/pi-script-dashboard/scripts.json >/dev/null <<'JSON'
 JSON
 sudo chown pi-dashboard:pi-dashboard /var/lib/pi-script-dashboard/scripts.json
 sudo chmod 0600 /var/lib/pi-script-dashboard/scripts.json
-sudo -u pi-dashboard /usr/local/bin/node -e \
+sudo -u pi-dashboard "$NODE_BIN_DIR/node" -e \
   "const fs=require('fs'); JSON.parse(fs.readFileSync('/var/lib/pi-script-dashboard/scripts.json')); console.log('scripts.json valid')"
 ```
 
@@ -879,7 +923,7 @@ Red flags: JSON parse failure, an unexpected fifth job, or any path outside the 
 
 ## 14. Migrate credentials and narrow job permissions
 
-The service runs with `ProtectHome=true`, so jobs cannot rely on `/home/pi/.ssh`. Copy only the specific deployment key and known-host entries required by backup jobs.
+The service runs with `ProtectHome=true`, so jobs cannot rely on `/home/pi/.ssh`. Old jobs launched through `sudo` may instead use `/root/.ssh`; inspect their actual credentials and key paths before copying. Copy only the specific deployment key and known-host entries required by backup jobs.
 
 Example, replacing filenames with the real values from the private record:
 
@@ -911,7 +955,7 @@ Red flags — stop if:
 
 Grant backup data access with read-only groups or ACLs where possible. Do not make entire trees world-readable or run the dashboard as root. Every `Permission denied` encountered later is a request for one narrow permission, not justification for `chmod -R 777`.
 
-The systemd sandbox makes the host filesystem read-only to dashboard-launched jobs except for the three application directories. If a backup job must write to a mounted destination outside `/var/log/pi-script-dashboard` or `/var/lib/pi-script-dashboard`, explicitly allow only that destination with a systemd drop-in.
+The systemd sandbox makes the host filesystem read-only to dashboard-launched jobs except for the application directories and `/var/spool/cron/crontabs`. The cron exception lets Debian's setgid `crontab` helper update this account's schedule; normal filesystem permissions still prevent it from editing another user's crontab. If a backup job must write to a mounted destination outside `/var/log/pi-script-dashboard` or `/var/lib/pi-script-dashboard`, explicitly allow only that destination with a systemd drop-in. Cron-launched jobs run outside the web unit's systemd sandbox, so their ordinary Unix permissions also need review.
 
 Example — replace these paths with values recorded in the private deployment record and omit any line the jobs do not need:
 
@@ -961,7 +1005,7 @@ First inspect the backed-up root crontab:
 sudo sed -n '1,240p' "$BACKUP_ROOT/root-crontab.txt"
 ```
 
-Record the five-field schedule for each job in the private deployment record. Do not copy unrelated or secret-bearing command lines into Git.
+Record the five-field schedule and whether each job is active or paused in the private deployment record. Do not copy unrelated or secret-bearing command lines into Git. Stage every new entry as paused until root schedules are disabled and the new service passes its checks.
 
 Set the four schedules interactively on the **Pi**. Enter only the five cron fields, for example `0 2 * * *`:
 
@@ -971,19 +1015,20 @@ read -r -p "Unraid PostgreSQL Backup schedule: " CRON_POSTGRES
 read -r -p "Conabadi Server Backup schedule: " CRON_CONABADI
 read -r -p "Lazo Panama Server Backup schedule: " CRON_LAZO
 
+CRON_REVIEW="$(mktemp)"
 printf '%s\n' \
-  "$CRON_UNRAID '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_unraid.sh' # pi-dashboard:d73547ff98884b97" \
-  "$CRON_POSTGRES '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_unraid_postgresql_db.sh' # pi-dashboard:805bfe29eb27fc7b" \
-  "$CRON_CONABADI '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_forge_server.sh' '/var/lib/pi-script-dashboard/configs/conabadi.conf' # pi-dashboard:c72d3d1284289cbf" \
-  "$CRON_LAZO '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_forge_server.sh' '/var/lib/pi-script-dashboard/configs/lazopanama.conf' # pi-dashboard:19445ae2037a9fae" \
-  | tee /tmp/pi-dashboard.crontab.review
+  "# $CRON_UNRAID '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_unraid.sh' # pi-dashboard:d73547ff98884b97" \
+  "# $CRON_POSTGRES '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_unraid_postgresql_db.sh' # pi-dashboard:805bfe29eb27fc7b" \
+  "# $CRON_CONABADI '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_forge_server.sh' '/var/lib/pi-script-dashboard/configs/conabadi.conf' # pi-dashboard:c72d3d1284289cbf" \
+  "# $CRON_LAZO '/bin/bash' '/var/lib/pi-script-dashboard/scripts/backup_forge_server.sh' '/var/lib/pi-script-dashboard/configs/lazopanama.conf' # pi-dashboard:19445ae2037a9fae" \
+  | tee "$CRON_REVIEW"
 ```
 
-Review `/tmp/pi-dashboard.crontab.review` carefully:
+Review the temporary file carefully:
 
 ```bash
-cat /tmp/pi-dashboard.crontab.review
-awk 'NF < 8 { print "STOP: suspicious line", NR ":", $0; bad=1 } END { exit bad }' /tmp/pi-dashboard.crontab.review
+cat "$CRON_REVIEW"
+awk 'NF < 9 { print "STOP: suspicious line", NR ":", $0; bad=1 } END { exit bad }' "$CRON_REVIEW"
 ```
 
 Red flags — stop if:
@@ -994,28 +1039,21 @@ Red flags — stop if:
 - markers differ from the exact `pi-dashboard:<16 hex characters>` values above;
 - schedules would make jobs overlap unexpectedly.
 
-Install the service-user crontab:
+Confirm the service user's existing crontab is empty or contains only entries you have intentionally accounted for before replacing it. Install the staged, commented entries:
 
 ```bash
-sudo -u pi-dashboard crontab /tmp/pi-dashboard.crontab.review
+sudo crontab -u pi-dashboard "$CRON_REVIEW"
 sudo -u pi-dashboard crontab -l
-rm -f /tmp/pi-dashboard.crontab.review
+rm -f -- "$CRON_REVIEW"
 ```
 
-Expected: exactly the four managed lines plus any intentionally retained service-user lines.
-
-Now edit the root crontab and remove only the four migrated backup lines. Leave unrelated root jobs untouched:
-
-```bash
-sudo crontab -e
-sudo crontab -l
-```
-
-Red flags — stop if the same backup exists in both root and `pi-dashboard` crontabs, or if unrelated root entries disappear. Restore from `$BACKUP_ROOT/root-crontab.txt` if necessary.
+Expected: exactly the four managed lines, all commented out, plus any intentionally retained service-user lines. Leave the old root schedules unchanged until the cutover in Step 16. Do not activate the new schedules while the corresponding root jobs are active.
 
 ### The old Update + Reboot job
 
 Do not copy `update_and_reboot.sh` into the editable dashboard directory and do not add it to `scripts.json`. It is root-equivalent behavior.
+
+Explicitly comment out its old root schedule during the cutover. Removing it from the new registry does not disable the old scheduled job.
 
 Before restoring that capability:
 
@@ -1032,19 +1070,81 @@ Red flags include downloaded code executed without verification, arbitrary user 
 
 ## 16. Start and inspect the hardened service
 
-Enable the update watcher and dashboard:
+Begin the maintenance window only after the broker login check succeeds and no old backup job is still running. Keep the old dashboard idle. Capture the final mutable metadata before changing schedules:
+
+```bash
+sudo sh -c 'crontab -l > "$1/root-crontab.cutover.txt"' sh "$BACKUP_ROOT"
+sudo cp -a -- "$OLD_REPO/scripts.json" "$BACKUP_ROOT/scripts.cutover.json"
+```
+
+If root had no crontab, record that fact instead of treating an error message as a restorable crontab. Copy this final metadata to the same private off-device storage used for the rollback archive.
+
+Edit the root crontab and comment out only the four migrated backup jobs and the old `Update + Reboot` job. Leave unrelated entries untouched:
+
+```bash
+sudo crontab -e
+sudo crontab -l
+sudo -u pi-dashboard crontab -l
+```
+
+Confirm the migrated jobs are inactive in both accounts, then stop the old dashboard:
+
+```bash
+sudo systemctl disable --now "$OLD_DASHBOARD_SERVICE"
+sudo ss -ltnp '( sport = :8080 )'
+```
+
+Expected: no listener on port 8080. Stop if a supervisor restarts the old process or port 8080 remains occupied.
+
+Save the old Node command paths and switch the stable aliases to the verified Node 24 installation. This changes the global commands only after the old dashboard is stopped:
+
+```bash
+sudo bash -s -- "$BACKUP_ROOT" "$NODE_BIN_DIR" <<'BASH'
+set -euo pipefail
+cd /
+backup=$1
+node_bin_dir=$2
+if [ -e "$backup/node-commands" ]; then
+  echo 'STOP: existing Node rollback records must not be overwritten' >&2
+  exit 1
+fi
+install -d -o root -g root -m 0700 "$backup/node-commands"
+for tool in node npm npx; do
+  target="/usr/local/bin/$tool"
+  if [ -d "$target" ] && [ ! -L "$target" ]; then
+    echo "STOP: unexpected directory at $target" >&2
+    exit 1
+  fi
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    cp -a --parents -- "$target" "$backup/node-commands"
+  else
+    touch "$backup/node-commands/$tool.absent"
+  fi
+done
+for tool in node npm npx; do
+  ln -sfn "$node_bin_dir/$tool" "/usr/local/bin/$tool"
+done
+BASH
+hash -r
+/usr/local/bin/node --version
+```
+
+Expected: `v24.x.y`. Keep the `node-commands` backup for rollback. Enable the broker, update watcher, and dashboard:
 
 ```bash
 sudo systemctl daemon-reload
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/pi-script-dashboard.conf
+sudo systemctl enable --now pi-script-dashboard-auth.service
 sudo systemctl enable --now pi-script-dashboard-update.path
 sudo systemctl enable --now pi-script-dashboard.service
 sudo systemctl status pi-script-dashboard.service --no-pager --full
+sudo systemctl status pi-script-dashboard-auth.service --no-pager --full
 sudo systemctl status pi-script-dashboard-update.path --no-pager --full
 ```
 
 What to expect:
 
-- Both units are `active`.
+- All three units are `active`.
 - Dashboard service shows `Main PID` owned by `pi-dashboard`.
 - The log says `Server running on 127.0.0.1:8080`.
 
@@ -1080,9 +1180,8 @@ Expected headers include:
 - `Cache-Control: no-store`;
 - `X-Frame-Options: DENY`;
 - `X-Content-Type-Options: nosniff`;
-- a session cookie with `HttpOnly` and `SameSite=Strict`.
 
-The local HTTP request may not retain the production `Secure` cookie; that is expected. Real authentication is tested through the HTTPS Cloudflare hostname.
+The local HTTP request normally receives no session cookie because production cookies require HTTPS. Check `Secure`, `HttpOnly`, and `SameSite=Strict` on the session cookie through the HTTPS Cloudflare hostname during real authentication.
 
 Test sandboxing:
 
@@ -1349,11 +1448,14 @@ Red flag: any path outside the managed roots is accepted.
 
 ### 21.3 Cron pause/resume
 
-- Pause one job in the dashboard.
+- Confirm the corresponding root job is disabled, then resume one job in the dashboard during the maintenance window. Avoid its scheduled run time while testing.
+- Pause that job in the dashboard.
 - Run `sudo -u pi-dashboard crontab -l`; its exact line should be commented.
 - Resume it; the exact line should be active again.
 
 Red flags: multiple lines change, a different job changes, the root crontab changes, or the marker disappears.
+
+After all acceptance tests pass, restore each new job's previously recorded active or paused state. Check both crontabs again: the old root backup entries must stay disabled, and the `Update + Reboot` schedule must stay disabled. Observe at least one scheduled service-user backup separately from the manual-run test.
 
 ### 21.4 Manual job execution
 
@@ -1437,31 +1539,62 @@ On the **Pi**:
 ```bash
 sudo systemctl disable --now pi-script-dashboard.service
 sudo systemctl disable --now pi-script-dashboard-update.path
+sudo systemctl disable --now pi-script-dashboard-auth.service
 sudo ss -ltnp '( sport = :8080 )' || true
 ```
 
-Restore the root crontab only from the verified backup:
+Disable the service-user crontab first to prevent duplicate runs. Preserve it in the root-only backup directory:
 
 ```bash
-sudo crontab "$BACKUP_ROOT/root-crontab.txt"
+sudo sh -c 'crontab -u pi-dashboard -l > "$1/pi-dashboard-crontab.rollback.txt"' sh "$BACKUP_ROOT"
+sudo crontab -u pi-dashboard -r
+```
+
+If no service-user crontab exists, confirm that before proceeding. Restore the root crontab from the final cutover capture, or from the verified archive if cutover had not reached that capture:
+
+```bash
+sudo crontab "$BACKUP_ROOT/root-crontab.cutover.txt"
 sudo crontab -l
 ```
 
-Disable the service-user crontab to prevent duplicate runs:
+If the root crontab was originally absent, remove it instead of installing a file containing `no crontab` output. Keep the old `Update + Reboot` entry commented out while troubleshooting.
+
+Restore the old Node command paths before restarting the old service. Skip this block if the cutover never switched them:
 
 ```bash
-sudo -u pi-dashboard crontab -l > /tmp/pi-dashboard-crontab.rollback-copy
-sudo -u pi-dashboard crontab -r
+sudo bash -s -- "$BACKUP_ROOT" <<'BASH'
+set -euo pipefail
+backup=$1
+for tool in node npm npx; do
+  target="/usr/local/bin/$tool"
+  saved="$backup/node-commands/usr/local/bin/$tool"
+  if [ -e "$saved" ] || [ -L "$saved" ]; then
+    rm -f -- "$target"
+    cp -a -- "$saved" "$target"
+  elif [ -f "$backup/node-commands/$tool.absent" ]; then
+    rm -f -- "$target"
+  else
+    echo "STOP: no rollback record for $target" >&2
+    exit 1
+  fi
+done
+BASH
+hash -r
 ```
 
-Restore/re-enable the old dashboard service using `$BACKUP_ROOT/old-service.txt` and the original unit path recorded during preflight. If the old service used `pi-script-dashboard.service`, reinstall its original unit file before enabling it.
+Restore/re-enable the old dashboard service using the original unit file and drop-ins captured under `$BACKUP_ROOT`, with `$BACKUP_ROOT/old-service.txt` as a reference. If the old service used `pi-script-dashboard.service`, reinstall its original unit file before enabling it. Do not install the concatenated `systemctl cat` reference as a replacement unit.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now "$OLD_DASHBOARD_SERVICE"
+```
 
 Keep Cloudflare Access enabled during rollback. It is an independent security layer and should not be removed merely because the origin application was rolled back.
 
 Verify rollback:
 
 ```bash
-sudo systemctl status pi-script-dashboard.service --no-pager --full || true
+sudo systemctl status "$OLD_DASHBOARD_SERVICE" --no-pager --full || true
 sudo ss -ltnp '( sport = :8080 )' || true
 sudo crontab -l
 sudo -u pi-dashboard crontab -l 2>&1 || true
@@ -1473,7 +1606,9 @@ Red flags: duplicate cron schedules, two dashboard processes, public direct acce
 
 ### Application update
 
-Prefer the dashboard update button. Before updating:
+Prefer the dashboard update button after deployment prerequisites are installed. The update helper does not install root-owned units, PAM profiles, or tmpfiles rules. When upgrading an existing hardened deployment to this authentication-broker release, install `sasl2-bin` and the Step 12 files from the reviewed release, then pass the service-account socket login test before starting the updated application. Review and install changes to those root-owned deployment files manually for future releases as well.
+
+Before updating:
 
 ```bash
 sudo -u pi-dashboard git -C /opt/pi-script-dashboard status --short
@@ -1487,7 +1622,7 @@ Expected: clean working tree and only reviewed commits pending.
 
 ```bash
 sudo systemctl --failed
-sudo systemctl status pi-script-dashboard.service cloudflared.service --no-pager
+sudo systemctl status pi-script-dashboard.service pi-script-dashboard-auth.service cloudflared.service --no-pager
 sudo journalctl -u pi-script-dashboard.service -p warning --since '-7 days' --no-pager
 sudo journalctl -u cloudflared.service -p warning --since '-7 days' --no-pager
 sudo -u pi-dashboard crontab -l
@@ -1495,7 +1630,7 @@ sudo tail -n 100 /var/log/pi-script-dashboard/audit.jsonl
 sudo -u pi-dashboard git -C /opt/pi-script-dashboard status --short
 ```
 
-Healthy result: no failed units, both services active, expected four cron lines, no unexplained login failures/actions, and clean Git status.
+Healthy result: no failed units, all three services active, expected four cron lines with the recorded paused states, no unexplained login failures/actions, and clean Git status.
 
 ### Dependency review
 
@@ -1525,13 +1660,15 @@ Generate a new environment file as described in Step 11. Existing sessions will 
 ### Service exits because PAM is unavailable
 
 ```bash
-dpkg-query -W libpam0g-dev build-essential python3
-cd /opt/pi-script-dashboard
-sudo -u pi-dashboard /usr/local/bin/npm ci --omit=dev
-sudo -u pi-dashboard /usr/local/bin/node -e "require('authenticate-pam'); console.log('PAM loaded')"
+dpkg-query -W sasl2-bin
+sudo systemctl status pi-script-dashboard-auth.service --no-pager --full
+sudo journalctl -u pi-script-dashboard-auth.service --since '-10 minutes' --no-pager
+sudo stat -c '%U %G %a %n' /run/pi-dashboard-auth /etc/pam.d/pi-script-dashboard
+sudo -u pi-dashboard test -S /run/pi-dashboard-auth/mux
+sudo grep '^PAM_SOCKET=' /etc/pi-script-dashboard/environment
 ```
 
-Do not enable fallback credentials in production.
+The socket path must match `PAM_SOCKET`; its parent must be `root:pi-dashboard 0750`, and the PAM profile must be `root:root 0644`. Reinstall the root-owned broker unit/PAM profile from the reviewed release if needed. Do not enable fallback credentials in production, make the socket directory writable by the application, or grant the web account access to `/etc/shadow`.
 
 ### Valid PAM password is rejected
 
@@ -1539,10 +1676,13 @@ Do not enable fallback credentials in production.
 getent group pi-dashboard-admins
 id -nG REPLACE_WITH_USERNAME
 sudo passwd --status REPLACE_WITH_USERNAME
+sudo -u pi-dashboard -H python3 \
+  /opt/pi-script-dashboard/deploy/check-pam-login.py REPLACE_WITH_USERNAME
+sudo journalctl -u pi-script-dashboard-auth.service --since '-10 minutes' --no-pager
 sudo journalctl -u pi-script-dashboard.service --since '-10 minutes' --no-pager
 ```
 
-The user must have a usable password and explicit group membership.
+The user must have a usable password, pass PAM account checks, and have explicit group membership. Enter passwords only at the interactive prompt. A root `pamtester login` success paired with an unprivileged failure is expected on standard Debian and does not validate this broker; use the socket check above.
 
 ### Browser loops back to login or never receives a session
 
@@ -1591,7 +1731,10 @@ Deployment is complete only when every item is true:
 - [ ] Node is v24 and was installed from a checksum-verified archive.
 - [ ] `npm run check` passes.
 - [ ] Production dependency audit reports zero vulnerabilities.
-- [ ] `authenticate-pam` loads successfully.
+- [ ] The dedicated root PAM broker is active, with a root-owned profile requiring `pi-dashboard-admins`.
+- [ ] The `pi-dashboard` account can authenticate the intended administrator through the protected socket; wrong passwords and users outside the group are rejected.
+- [ ] `/run/pi-dashboard-auth` is `root:pi-dashboard 0750` and not writable by the application.
+- [ ] The tmpfiles-managed lock directory exists independently of the web service.
 - [ ] `pi-dashboard` has no interactive shell and is not an admin-group member.
 - [ ] Only intended PAM users belong to `pi-dashboard-admins`.
 - [ ] Environment and Cloudflare credentials are `root:root 0600`.

@@ -24,8 +24,5 @@
   "devDependencies": {
     "@tailwindcss/cli": "4.1.11",
     "tailwindcss": "4.1.11"
-  },
-  "optionalDependencies": {
-    "authenticate-pam": "1.0.5"
   }
 }

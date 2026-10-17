@@ -25,6 +25,25 @@ jobs:
       - run: npm run check
       - run: npm run audit:production
 
+  linux-auth-and-cron:
+    runs-on: ubuntu-latest
+    container: node:24-bookworm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install Debian authentication and cron packages
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sasl2-bin cron python3
+      - name: Test the interactive PAM diagnostic
+        run: python3 -m unittest discover -s test -p '*_test.py'
+      - name: Exercise packaged PAM broker and per-user cron
+        env:
+          PI_DASHBOARD_INTEGRATION_TEST: "1"
+        run: bash test/linux-auth-integration.sh
+
   codeql:
     runs-on: ubuntu-latest
     permissions:
