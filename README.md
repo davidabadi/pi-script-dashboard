@@ -408,12 +408,13 @@ curl --fail --silent --show-error --location --remote-name \
 grep " $NODE_ARCHIVE$" SHASUMS256.txt | sha256sum --check --strict -
 
 NODE_DIR="${NODE_ARCHIVE%.tar.xz}"
-sudo tar -xJf "$NODE_ARCHIVE" -C /opt
+sudo tar --no-same-owner -xJf "$NODE_ARCHIVE" -C /opt
 NODE_BIN_DIR="/opt/$NODE_DIR/bin"
 
 "$NODE_BIN_DIR/node" --version
 env PATH="$NODE_BIN_DIR:/usr/bin:/bin" "$NODE_BIN_DIR/npm" --version
 readlink -f "$NODE_BIN_DIR/node"
+stat -c '%U %G %a %n' "$NODE_BIN_DIR/node"
 ```
 
 What to expect:
@@ -422,6 +423,7 @@ What to expect:
 - Checksum verification prints `OK`.
 - The versioned `node --version` starts with `v24.`; the old service's Node installation is unchanged during preparation.
 - `readlink` resolves beneath `/opt/node-v24...`.
+- The installed Node binary is owned by `root root`; archive ownership is not restored onto the Pi.
 
 Red flags — stop if:
 
@@ -543,16 +545,13 @@ Compare the full `rev-parse HEAD` value with `EXPECTED_DEPLOY_COMMIT`. They must
 Install and validate dependencies:
 
 ```bash
-cd /opt/pi-script-dashboard
-sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
-  "$NODE_BIN_DIR/npm" ci
-sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
-  "$NODE_BIN_DIR/npm" run check
-sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
-  "$NODE_BIN_DIR/npm" run audit:production
-sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
-  "$NODE_BIN_DIR/npm" run build:css
-sudo -u pi-dashboard git diff --exit-code -- public/tailwind.css
+sudo -u pi-dashboard -H env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" --prefix /opt/pi-script-dashboard ci
+sudo -u pi-dashboard -H env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" --prefix /opt/pi-script-dashboard run check
+sudo -u pi-dashboard -H env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" --prefix /opt/pi-script-dashboard run audit:production
+sudo -u pi-dashboard git -C /opt/pi-script-dashboard diff --exit-code -- public/tailwind.css
 ```
 
 What to expect:
@@ -560,20 +559,22 @@ What to expect:
 - `npm ci` reports a clean install from `package-lock.json`.
 - The test command reports all tests passing.
 - The production audit reports `found 0 vulnerabilities`.
-- Rebuilding CSS produces no Git diff.
+- The checked-in stylesheet is unchanged.
+
+Deploy the checked-in `public/tailwind.css` from the reviewed release. Run `npm run build:css` during release preparation, review the resulting asset, and commit it with the release. Tailwind's automatic source detection also scans eligible project text beyond the explicit template sources, so documentation, tests, and other checkout files can affect a rebuild. A byte-for-byte rebuild comparison is not a deployment requirement. [Tailwind source detection](https://tailwindcss.com/docs/detecting-classes-in-source-files)
 
 Red flags — stop if:
 
 - npm modifies `package-lock.json` during `npm ci`;
 - any test fails;
 - the audit reports a high or critical vulnerability;
-- generated CSS differs from the tracked file.
+- dependency installation or tests unexpectedly modify the checked-in stylesheet.
 
 Remove development-only packages after validation. The authentication broker is installed and tested separately in Step 12:
 
 ```bash
-sudo -u pi-dashboard env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
-  "$NODE_BIN_DIR/npm" prune --omit=dev
+sudo -u pi-dashboard -H env PATH="$NODE_BIN_DIR:/usr/bin:/bin" \
+  "$NODE_BIN_DIR/npm" --prefix /opt/pi-script-dashboard prune --omit=dev
 sudo -u pi-dashboard git -C /opt/pi-script-dashboard status --short
 ```
 
@@ -649,35 +650,33 @@ An unprivileged process cannot normally verify another local user's password wit
 
 The socket is inside `/run/pi-dashboard-auth`, owned by `root:pi-dashboard` with mode `0750`. `saslauthd` creates the socket itself with permissive mode bits; the protected parent directory controls who can connect and prevents the service account from replacing it. Do not give `pi-dashboard` ownership or write permission on that directory.
 
-Run from `/opt/pi-script-dashboard` on the **Pi**:
+Run on the **Pi**. The administrator does not need to enter the service account's private checkout; `sudo install` reads the absolute source paths:
 
 ```bash
-cd /opt/pi-script-dashboard
-
 sudo install -o root -g root -m 0644 \
-  deploy/pi-script-dashboard-auth.service \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-auth.service \
   /etc/systemd/system/pi-script-dashboard-auth.service
 sudo install -o root -g root -m 0644 \
-  deploy/pi-script-dashboard.pam \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard.pam \
   /etc/pam.d/pi-script-dashboard
 sudo install -o root -g root -m 0644 \
-  deploy/pi-script-dashboard.tmpfiles \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard.tmpfiles \
   /etc/tmpfiles.d/pi-script-dashboard.conf
 sudo install -o root -g root -m 0644 \
-  deploy/pi-script-dashboard.service \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard.service \
   /etc/systemd/system/pi-script-dashboard.service
 sudo install -o root -g root -m 0644 \
-  deploy/pi-script-dashboard-update.path \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-update.path \
   /etc/systemd/system/pi-script-dashboard-update.path
 sudo install -o root -g root -m 0644 \
-  deploy/pi-script-dashboard-update.service \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-update.service \
   /etc/systemd/system/pi-script-dashboard-update.service
 sudo install -d -o root -g root -m 0755 /usr/local/libexec
 sudo install -o root -g root -m 0755 \
-  deploy/pi-script-dashboard-update \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-update \
   /usr/local/libexec/pi-script-dashboard-update
 sudo install -o root -g root -m 0644 \
-  deploy/pi-script-dashboard.logrotate \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard.logrotate \
   /etc/logrotate.d/pi-script-dashboard
 
 sudo systemd-analyze verify \
@@ -955,7 +954,7 @@ Red flags — stop if:
 
 Grant backup data access with read-only groups or ACLs where possible. Do not make entire trees world-readable or run the dashboard as root. Every `Permission denied` encountered later is a request for one narrow permission, not justification for `chmod -R 777`.
 
-The systemd sandbox makes the host filesystem read-only to dashboard-launched jobs except for the application directories and `/var/spool/cron/crontabs`. The cron exception lets Debian's setgid `crontab` helper update this account's schedule; normal filesystem permissions still prevent it from editing another user's crontab. If a backup job must write to a mounted destination outside `/var/log/pi-script-dashboard` or `/var/lib/pi-script-dashboard`, explicitly allow only that destination with a systemd drop-in. Cron-launched jobs run outside the web unit's systemd sandbox, so their ordinary Unix permissions also need review.
+The systemd sandbox makes the host filesystem read-only to dashboard-launched jobs except for the application directories and `/var/spool/cron/crontabs`. The unit grants `SupplementaryGroups=crontab` and explicitly keeps `NoNewPrivileges=true`: several sandbox settings already imply that restriction, so Debian's helper cannot rely on gaining its packaged setgid privilege. The service-only group allows it to update this account's schedule. Keep the spool root-owned with group `crontab` and mode `1730`, and user crontabs mode `0600`; the sticky bit and file ownership protect existing other-user tables. Do not add the account to that group globally or loosen spool permissions. Before enabling schedules, test comments-only create, list, replace and removal from a transient service with the same sandbox, and confirm `crontab -u root -l` is denied. If a backup job must write to a mounted destination outside `/var/log/pi-script-dashboard` or `/var/lib/pi-script-dashboard`, explicitly allow only that destination with a systemd drop-in. Cron-launched jobs run outside the web unit's systemd sandbox, so their ordinary Unix permissions also need review.
 
 Example — replace these paths with values recorded in the private deployment record and omit any line the jobs do not need:
 
@@ -1637,11 +1636,14 @@ Healthy result: no failed units, all three services active, expected four cron l
 From a clean checkout with development dependencies installed:
 
 ```bash
-cd /opt/pi-script-dashboard
-sudo -u pi-dashboard /usr/local/bin/npm ci
-sudo -u pi-dashboard /usr/local/bin/npm run check
-sudo -u pi-dashboard /usr/local/bin/npm run audit:production
-sudo -u pi-dashboard /usr/local/bin/npm prune --omit=dev
+sudo -u pi-dashboard -H env PATH=/usr/local/bin:/usr/bin:/bin \
+  /usr/local/bin/npm --prefix /opt/pi-script-dashboard ci
+sudo -u pi-dashboard -H env PATH=/usr/local/bin:/usr/bin:/bin \
+  /usr/local/bin/npm --prefix /opt/pi-script-dashboard run check
+sudo -u pi-dashboard -H env PATH=/usr/local/bin:/usr/bin:/bin \
+  /usr/local/bin/npm --prefix /opt/pi-script-dashboard run audit:production
+sudo -u pi-dashboard -H env PATH=/usr/local/bin:/usr/bin:/bin \
+  /usr/local/bin/npm --prefix /opt/pi-script-dashboard prune --omit=dev
 ```
 
 Do not run `npm audit fix --force` blindly on production. Review and test dependency updates through a pull request.
@@ -1697,6 +1699,10 @@ Confirm Cloudflare forwards the original HTTPS scheme and the browser accesses t
 ### `403 Request verification failed`
 
 Reload the page and retry once. This normally means a stale form after session rotation or expiry. Persistent failures indicate stripped cookies/headers, an incorrect origin hostname, or cached HTML. Confirm Cloudflare cache bypass.
+
+### `403 Invalid origin` after submitting the login form
+
+Check only the failed request's `Origin` header in browser Developer Tools; do not share cookies or form data. The login document must use `Referrer-Policy: same-origin`. A `no-referrer` policy makes browsers send `Origin: null` for native form POSTs, which the origin guard correctly rejects. Deploy the corrected header, then open a fresh `/login` page before retrying; the already-open document retains its previous policy. Keep null-origin rejection and CSRF validation enabled. See the [Fetch origin-header algorithm](https://fetch.spec.whatwg.org/#append-a-request-origin-header).
 
 ### Job fails with permission denied
 

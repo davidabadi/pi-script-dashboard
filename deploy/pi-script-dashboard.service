@@ -8,6 +8,9 @@ Requires=pi-script-dashboard-auth.service
 Type=simple
 User=pi-dashboard
 Group=pi-dashboard
+# Give Debian's per-user crontab helper spool access without a setgid transition.
+SupplementaryGroups=crontab
+NoNewPrivileges=true
 WorkingDirectory=/opt/pi-script-dashboard
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/pi-script-dashboard/environment
@@ -33,7 +36,7 @@ RestrictSUIDSGID=true
 RestrictRealtime=true
 LockPersonality=true
 SystemCallArchitectures=native
-# The setgid crontab helper retains its normal per-user access checks.
+# The crontab helper retains its per-user checks; the sticky spool protects other users.
 ReadWritePaths=/var/lib/pi-script-dashboard /var/log/pi-script-dashboard /run/pi-script-dashboard /var/spool/cron/crontabs
 
 [Install]

@@ -6,7 +6,9 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const {
+  requireSameOrigin,
   safeJson,
+  securityHeaders,
   shellQuote,
   stableJobId,
   timingSafeEqualText,
@@ -14,6 +16,50 @@ const {
   validateManagedPath,
   validateName,
 } = require("../security");
+
+function checkOrigin(origin, host = "pi-atl.abadi.org") {
+  let passed = false;
+  let status;
+  let message;
+  const req = { method: "POST", get: (name) => ({ host, origin })[name] };
+  const res = {
+    status(value) { status = value; return this; },
+    send(value) { message = value; return this; },
+  };
+  requireSameOrigin(["pi-atl.abadi.org"])(req, res, () => { passed = true; });
+  return { passed, status, message };
+}
+
+test("security headers preserve the origin of same-origin native form submissions", () => {
+  const headers = {};
+  const res = {
+    locals: {},
+    set(values) { Object.assign(headers, values); },
+    removeHeader(name) { delete headers[name]; },
+  };
+  let passed = false;
+  securityHeaders({ secure: true }, res, () => { passed = true; });
+  // Fetch serializes a native form POST's Origin as null under no-referrer.
+  // same-origin preserves it for local forms and omits off-site referrers.
+  assert.equal(headers["Referrer-Policy"], "same-origin");
+  assert.equal(passed, true);
+});
+
+test("origin validation accepts the public same-origin form and rejects opaque origins", () => {
+  assert.equal(checkOrigin("https://pi-atl.abadi.org").passed, true);
+  for (const origin of ["null", "not a URL"]) {
+    assert.deepEqual(checkOrigin(origin), { passed: false, status: 403, message: "Invalid origin." });
+  }
+});
+
+test("origin validation still rejects cross-origin forms and untrusted hosts", () => {
+  assert.deepEqual(checkOrigin("https://other.example"), {
+    passed: false, status: 403, message: "Cross-origin request rejected.",
+  });
+  assert.deepEqual(checkOrigin("https://other.example", "other.example"), {
+    passed: false, status: 403, message: "Untrusted host.",
+  });
+});
 
 test("safeJson prevents script-tag breakout", () => {
   const output = safeJson("</script><script>alert(1)</script>&\u2028");
