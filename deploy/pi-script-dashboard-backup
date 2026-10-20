@@ -1,0 +1,239 @@
+#!/usr/bin/python3
+"""Capture a full Pi dashboard backup or deliver its independent failure alert."""
+
+import argparse
+from contextlib import contextmanager
+import json
+import os
+from pathlib import Path
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+try:
+    import fcntl
+except ImportError:  # The production CLI requires Linux; tests can inject commands.
+    fcntl = None
+
+SUPPORT = Path(__file__).resolve().parent / "pi-script-dashboard-backup-support"
+sys.path.insert(0, str(SUPPORT if SUPPORT.is_dir() else Path(__file__).resolve().parent))
+from backup_archive import capture_application, validate_backup_config, check_capture_prerequisites
+from backup_notification import send_failure_email
+from backup_settings import load_settings
+
+CONFIG = "/etc/pi-script-dashboard/backup.json"
+LOCK = "/run/pi-script-dashboard-maintenance/maintenance.lock"
+WEB = "pi-script-dashboard.service"
+WORKER = "pi-script-dashboard-worker.service"
+WATCHER = "pi-script-dashboard-update.path"
+BACKUP_UNIT = "pi-script-dashboard-backup.service"
+
+
+class BackupError(RuntimeError):
+    pass
+
+
+def enabled(value):
+    return value is True or value == "1" or value == 1
+
+
+@contextmanager
+def maintenance_lock(path=LOCK, *, inherited_fd=None, timeout=3600):
+    """Share one kernel lock with updates without exposing it to app processes."""
+    if fcntl is None:
+        raise BackupError("Application backup requires Linux.")
+    destination = Path(path)
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    parent = destination.parent.lstat()
+    if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != 0 or parent.st_mode & 0o077:
+        raise BackupError("Maintenance lock directory must be root-owned mode 0700.")
+    if inherited_fd is not None:
+        expected = destination.lstat()
+        actual = os.fstat(inherited_fd)
+        if not stat.S_ISREG(expected.st_mode) or expected.st_uid != 0 or expected.st_mode & 0o077 or (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
+            raise BackupError("Inherited maintenance lock is invalid.")
+        try:
+            fcntl.flock(inherited_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise BackupError("Maintenance lock is not available.") from None
+        # Do not unlock: the updater owns this shared open-file description.
+        yield
+        return
+    descriptor = os.open(destination, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+            raise BackupError("Maintenance lock must be a private root-owned regular file.")
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise BackupError("Timed out waiting for the application maintenance lock.")
+                time.sleep(1)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+class ApplicationBackup:
+    def __init__(self, config, *, runner=subprocess.run, capture=capture_application, validate=validate_backup_config):
+        self.config = config
+        self.runner = runner
+        self.capture = capture
+        self.validate = validate
+
+    def command(self, arguments, *, timeout=60, check=True):
+        try:
+            result = self.runner(arguments, check=False, capture_output=True, text=True, timeout=timeout,
+                                 env={"PATH": "/usr/local/bin:/usr/bin:/bin", "LC_ALL": "C", "LANG": "C.UTF-8"}, close_fds=True)
+        except (OSError, subprocess.SubprocessError):
+            raise BackupError(f"Could not run {Path(arguments[0]).name} for the backup.") from None
+        if check and result.returncode != 0:
+            # Do not copy subprocess output into alerts: it can contain private
+            # application data or credentials from an external mail command.
+            raise BackupError(f"{Path(arguments[0]).name} failed during backup (exit {result.returncode}).")
+        return result
+
+    def active(self, unit):
+        result = self.command(["/usr/bin/systemctl", "is-active", "--quiet", unit], check=False)
+        if result.returncode not in (0, 3, 4):
+            raise BackupError("Could not establish the original application service state.")
+        return result.returncode == 0
+
+    def control(self, action, *, wait=False):
+        arguments = ["/usr/sbin/runuser", "-u", self.config["service_user"], "--", "/usr/local/bin/node",
+                     str(Path(self.config["repo_root"]) / "bin/control.js"), "--db", self.config["db_file"]]
+        if wait:
+            arguments += ["--timeout", str(self.config["drain_timeout_seconds"])]
+        result = self.command(arguments + [action], timeout=self.config["drain_timeout_seconds"] + 30 if wait else 60)
+        try:
+            value = json.loads(result.stdout)
+        except (TypeError, json.JSONDecodeError):
+            raise BackupError("Application control returned invalid state.") from None
+        if not isinstance(value, dict):
+            raise BackupError("Application control returned invalid state.")
+        return value
+
+    def run(self, *, already_stopped=False):
+        self.validate(self.config)
+        if already_stopped:
+            if self.active(WEB) or self.active(WORKER):
+                raise BackupError("The updater must stop web and worker before the full snapshot.")
+            state = self.control("status")
+            if not enabled(state.get("draining")) or state.get("running") != 0:
+                raise BackupError("The updater must finish draining jobs before the full snapshot.")
+            return self.capture(self.config)
+
+        original = {unit: self.active(unit) for unit in (WATCHER, WEB, WORKER)}
+        state = self.control("status")
+        was_draining = enabled(state.get("draining"))
+        drain_attempted = False
+        stop_attempted = False
+        watcher_stop_attempted = False
+        problem = None
+        archive = None
+        try:
+            if original[WATCHER]:
+                watcher_stop_attempted = True
+                self.command(["/usr/bin/systemctl", "stop", WATCHER])
+            if original[WORKER]:
+                drain_attempted = True
+                self.control("drain")
+                self.control("wait-idle", wait=True)
+            # Stop inactive/failed units too, to cancel any scheduled restart.
+            stop_attempted = True
+            self.command(["/usr/bin/systemctl", "stop", WEB, WORKER])
+            archive = self.capture(self.config)
+        except Exception as error:
+            problem = error
+        finally:
+            recovery_errors = []
+            if stop_attempted:
+                for unit in (WORKER, WEB):
+                    if original[unit]:
+                        try:
+                            self.command(["/usr/bin/systemctl", "start", unit])
+                        except Exception:
+                            recovery_errors.append(unit)
+            if drain_attempted and not was_draining:
+                try:
+                    self.control("resume")
+                except Exception:
+                    recovery_errors.append("worker drain state")
+            if watcher_stop_attempted:
+                try:
+                    self.command(["/usr/bin/systemctl", "start", WATCHER])
+                except Exception:
+                    recovery_errors.append(WATCHER)
+            if recovery_errors:
+                raise BackupError("Application service recovery failed; inspect the backup journal before resuming jobs.") from problem
+        if problem is not None:
+            raise problem
+        return archive
+
+
+def interrupted(signum, frame):
+    raise BackupError("Application backup interrupted; restoring the original service state.")
+
+
+def root_environment():
+    return os.name == "posix" and hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", default=CONFIG)
+    parser.add_argument("--notify-failure", action="store_true")
+    parser.add_argument("--unit", default=BACKUP_UNIT)
+    parser.add_argument("--check", action="store_true", help="Check configuration and local prerequisites without taking a backup or sending mail")
+    parser.add_argument("--already-stopped", action="store_true", help="Internal updater mode; requires its inherited maintenance lock")
+    parser.add_argument("--lock-fd", type=int)
+    args = parser.parse_args(argv)
+    if not root_environment():
+        print("Run the installed backup service on the Pi as root.", file=sys.stderr)
+        return 1
+    if args.already_stopped != (args.lock_fd is not None):
+        parser.error("--already-stopped and --lock-fd must be used together")
+    try:
+        if args.notify_failure:
+            config = load_settings(args.config, notification_only=True)
+            send_failure_email(config, unit_name=args.unit, summary="failed")
+            print("Backup failure email submitted.")
+            return 0
+        config = load_settings(args.config)
+        if args.check:
+            check_capture_prerequisites(config)
+            for executable in ("/usr/bin/systemctl", "/usr/local/bin/node"):
+                if not os.path.isfile(executable) or not os.access(executable, os.X_OK):
+                    raise BackupError("The required application service tools are unavailable.")
+            from backup_notification import resolve_local_transport
+            if config["mail"]["transport"] in ("auto", "sendmail", "msmtp"):
+                resolve_local_transport(config["mail"])
+            print("Full-backup configuration and local prerequisites passed; no email was sent.")
+            return 0
+        signal.signal(signal.SIGTERM, interrupted)
+        signal.signal(signal.SIGINT, interrupted)
+        with maintenance_lock(inherited_fd=args.lock_fd, timeout=config["drain_timeout_seconds"]):
+            archive = ApplicationBackup(config).run(already_stopped=args.already_stopped)
+        print(f"Full application backup complete: {archive}")
+        return 0
+    except Exception as error:
+        print(f"Full application backup failed: {error}", file=sys.stderr)
+        if args.already_stopped:
+            # Direct updater calls do not have the scheduled service's OnFailure
+            # unit, so submit the same failure alert here instead.
+            try:
+                send_failure_email(load_settings(args.config, notification_only=True),
+                                   unit_name="pi-script-dashboard-update.service", summary="archive-failed")
+            except Exception as notification:
+                print(f"Backup failure notification failed: {notification}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

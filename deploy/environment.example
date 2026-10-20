@@ -9,8 +9,7 @@ CONFIG_ROOT=/var/lib/pi-script-dashboard/configs
 LOG_ROOT=/var/log/pi-script-dashboard
 LOCK_ROOT=/run/pi-script-dashboard
 DB_FILE=/var/lib/pi-script-dashboard/dashboard.sqlite
-# Used only by the explicit one-time importer. Never copy the bundled example
-# over an existing runtime registry.
+# Used only by the explicit one-time importer for an existing runtime registry.
 DATA_FILE=/var/lib/pi-script-dashboard/scripts.json
 HOOK_PORT=8081
 RETENTION_DAYS=30

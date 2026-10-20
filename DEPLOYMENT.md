@@ -707,6 +707,21 @@ sudo install -d -o root -g root -m 0755 /usr/local/libexec
 sudo install -o root -g root -m 0755 \
   /opt/pi-script-dashboard/deploy/pi-script-dashboard-update \
   /usr/local/libexec/pi-script-dashboard-update
+sudo install -o root -g root -m 0755 \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-backup \
+  /usr/local/libexec/pi-script-dashboard-backup
+sudo install -d -o root -g root -m 0755 \
+  /usr/local/libexec/pi-script-dashboard-backup-support
+sudo install -o root -g root -m 0644 \
+  /opt/pi-script-dashboard/deploy/backup_settings.py \
+  /opt/pi-script-dashboard/deploy/backup_notification.py \
+  /opt/pi-script-dashboard/deploy/backup_archive.py \
+  /usr/local/libexec/pi-script-dashboard-backup-support/
+sudo install -o root -g root -m 0644 \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-backup.service \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-backup.timer \
+  /opt/pi-script-dashboard/deploy/pi-script-dashboard-backup-failure.service \
+  /etc/systemd/system/
 sudo install -o root -g root -m 0644 \
   /opt/pi-script-dashboard/deploy/pi-script-dashboard.logrotate \
   /etc/logrotate.d/pi-script-dashboard
@@ -716,7 +731,10 @@ sudo systemd-analyze verify \
   /etc/systemd/system/pi-script-dashboard.service \
   /etc/systemd/system/pi-script-dashboard-worker.service \
   /etc/systemd/system/pi-script-dashboard-update.path \
-  /etc/systemd/system/pi-script-dashboard-update.service
+  /etc/systemd/system/pi-script-dashboard-update.service \
+  /etc/systemd/system/pi-script-dashboard-backup.service \
+  /etc/systemd/system/pi-script-dashboard-backup.timer \
+  /etc/systemd/system/pi-script-dashboard-backup-failure.service
 sudo logrotate --debug /etc/logrotate.d/pi-script-dashboard
 ```
 
@@ -728,10 +746,10 @@ What to expect:
 
 Red flags — stop if:
 
-- the update helper is writable by `pi-dashboard` or any non-root user;
+- an update/backup helper or its Python support modules are writable by `pi-dashboard` or any non-root user;
 - the broker unit or PAM profile is writable by a non-root user;
 - a unit runs the web application as root;
-- `ExecStart` does not point to `/usr/local/bin/node`;
+- web/worker `ExecStart` does not point to `/usr/local/bin/node`, or a root maintenance unit invokes code from the service-owned checkout;
 - systemd reports unknown directives or invalid paths;
 - logrotate rejects the configuration.
 
@@ -747,10 +765,15 @@ stat -c '%U %G %a %n' \
   /etc/systemd/system/pi-script-dashboard-update.path \
   /etc/systemd/system/pi-script-dashboard-update.service \
   /usr/local/libexec/pi-script-dashboard-update \
+  /usr/local/libexec/pi-script-dashboard-backup \
+  /usr/local/libexec/pi-script-dashboard-backup-support/*.py \
+  /etc/systemd/system/pi-script-dashboard-backup.service \
+  /etc/systemd/system/pi-script-dashboard-backup.timer \
+  /etc/systemd/system/pi-script-dashboard-backup-failure.service \
   /etc/logrotate.d/pi-script-dashboard
 ```
 
-Expected: every file is owned by `root root`; units/logrotate are `644`; helper is `755`.
+Expected: every file is owned by `root root`; units/logrotate/Python support modules are `644`; executable helpers are `755`. Install and validate the root-private backup/mail configuration in **Full application backups** before enabling the timer or using the update helper.
 
 Create protected application directories explicitly. `systemd-tmpfiles` recreates the lock directory at boot and keeps it available when cron runs while the web service is stopped:
 
@@ -766,10 +789,11 @@ sudo systemd-tmpfiles --create /etc/tmpfiles.d/pi-script-dashboard.conf
 sudo stat -c '%U %G %a %n' \
   /var/lib/pi-script-dashboard \
   /var/log/pi-script-dashboard \
-  /run/pi-script-dashboard
+  /run/pi-script-dashboard \
+  /run/pi-script-dashboard-maintenance
 ```
 
-What to expect: all three directories are owned by `pi-dashboard pi-dashboard` with mode `700`.
+What to expect: application state/log/runtime directories are owned by `pi-dashboard pi-dashboard` with mode `700`; `/run/pi-script-dashboard-maintenance` is owned by `root root` with mode `700`.
 
 Start the authentication broker and check its protected socket before starting the web service:
 
@@ -1558,6 +1582,8 @@ Red flag: jobs disappear, duplicates appear, or unrelated fields change.
 
 ### 21.6 Update path
 
+Complete **Full application backups** below first: install the private configuration, confirm failure-mail delivery, and verify one manual full archive. The update helper requires that backup procedure before changing application files.
+
 Click **Update dashboard** once. Watch:
 
 ```bash
@@ -1576,7 +1602,7 @@ sudo -u pi-dashboard /usr/local/bin/node /opt/pi-script-dashboard/bin/control.js
 sudo -u pi-dashboard git -C /opt/pi-script-dashboard status --short
 ```
 
-Expected: status first reports waiting while an active job finishes; no checkout/dependency change happens before drain acknowledgement. A real root-owned flock prevents concurrent updates. Queued jobs remain queued; a consistent database backup precedes the fast-forward pull and `npm ci --omit=dev --ignore-scripts`; both services restart and queued work resumes. The request is removed and durable status is succeeded. The lock file may remain; kernel lock ownership, not file existence, controls exclusivity.
+Expected: status first reports waiting while an active job finishes; no checkout/dependency change happens before drain acknowledgement. A root-owned maintenance lock prevents concurrent updates or full backups. Queued jobs remain queued; a verified full application archive in the configured backup directory precedes the fast-forward pull and `npm ci --omit=dev --ignore-scripts`; both services restart and queued work resumes. The request is removed and durable status is succeeded. The lock file may remain; kernel lock ownership, not file existence, controls exclusivity.
 
 Red flags: update runs concurrently, changes files before active jobs finish, loses queued work, Git reports divergence, dependency installation fails, or services do not restart. A drain timeout or failure leaves durable failed status and the worker drained. Inspect the updater journal, repair or roll back, and explicitly resume only after validation.
 
@@ -1675,7 +1701,7 @@ Red flags: duplicate cron schedules, two dashboard processes, public direct acce
 
 Every update must use the drain-aware helper; do not run `git pull` or replace dependencies while the worker has active children. A failed update leaves queued work intact and drain enabled. After repair or rollback, validate the worker and run `bin/control.js --db /var/lib/pi-script-dashboard/dashboard.sqlite resume` as `pi-dashboard`.
 
-Prefer the dashboard update button after deployment prerequisites are installed. The update helper does not install root-owned units, PAM profiles, or tmpfiles rules. For the first SQLite/worker release, complete the explicit migration above and install the new root-owned worker and update units before using the update button. A helper from an older release cannot safely update this release. The new helper gives only its backup and schedule-sync subprocesses primary group `pi-dashboard` and supplementary group `crontab` using `runuser -g ... -G ...`; this permits spool access under the updater’s NoNewPrivileges restrictions without adding global account membership. Keep `sasl2-bin` and the Step 12 authentication broker in place and pass its socket login test. Review and install changes to those root-owned deployment files manually for future releases as well.
+Prefer the dashboard update button after deployment prerequisites are installed. The update helper does not install root-owned units, PAM profiles, or tmpfiles rules. For the first SQLite/worker release, complete the explicit migration above and install the new root-owned worker/update/backup helpers and units before using the update button. A helper from an older release cannot safely update this release. Configure and validate the full backup and failure-mail settings below; updates require the same complete backup and do not create a separate routine database-only backup. Backup crontab capture and update schedule synchronization use the service user's permissions with the required `crontab` group; global account membership is unnecessary. Keep `sasl2-bin` and the Step 12 authentication broker in place and pass its socket login test. Review and install changes to those root-owned deployment files manually for future releases as well.
 
 Before updating:
 
@@ -1717,38 +1743,101 @@ A failed or interrupted file edit can leave a private recovery manifest and orig
 
 If Monaco fails to load, Save remains disabled so an unavailable editor cannot overwrite a script/config with empty content. Restore the editor assets/network connection and reload; do not bypass the disabled control.
 
-### Consistent SQLite and file backups
+### Full application backups
 
-Do not copy only a live `dashboard.sqlite`: committed data may still be in its WAL. The backup CLI uses SQLite's online backup API and also records the complete service-user crontab and preserved legacy registry. It creates a new mode-0700 directory and refuses to reuse an existing output directory. Backups contain private metadata and need protected off-device storage. The backup CLI refuses an unresolved `content_recovery` marker before creating its output; finish edit recovery and retry schedule synchronization before a normal backup or update. If a recovery journal is corrupt or originals are missing, preserve a private full filesystem copy of the database, its WAL/SHM, and the complete `edit-recovery` directory after stopping writers, then investigate instead of deleting the marker. Do not treat that forensic copy as the ordinary portable SQLite snapshot.
+The full-backup service runs weekly on Sunday at **03:00 America/New_York**, with up to five minutes of scheduling jitter. `Persistent=true` catches a missed run after the Pi starts again. Each successful run publishes one verified archive and checksum under `/var/lib/pi-script-dashboard/backups/pi-dashboard`; only the newest **seven complete backups** are retained. A failed run does not prune good backups. Both scheduled and manual service failures start the independent failure-email unit. There is no separate weekly database backup: the full archive already contains a consistent database snapshot.
 
-For a full application snapshot, drain the worker as above, stop both services, and retain the update watcher disabled for the operation. Cron may enqueue while the website is stopped; the database snapshot is consistent and queued work remains in the live database. Then run on the Pi:
+The helper takes the same root-owned maintenance lock as the updater, drains active jobs, records the existing service/drain state, stops the web service, worker, and update watcher for the snapshot, and restores their previous state afterward, including when a recoverable backup error occurs. Cron may keep enqueueing while the website is stopped; queued work remains in the live database. A drain timeout fails without killing an active job. Inspect the journal after a failed run, especially if restoring services also failed.
+
+The archive contains:
+
+- A SQLite online snapshot, the service-user crontab, and backup metadata under `backup-metadata/`. Committed WAL data is included in the snapshot; raw live database/WAL/SHM files are excluded.
+- Managed scripts/configs, retained logs/run captures, runtime application data, and application code with its package lock and recorded Git commit when available. Old backups, sessions, transient locks, `.git`, and `node_modules` are excluded.
+- `/etc/pi-script-dashboard`, reviewed dashboard unit files/drop-ins, the PAM profile, tmpfiles/logrotate rules, and installed root-owned maintenance helpers. Standard `/etc/cloudflared` tunnel configuration, its service, and common local mail configuration are included when present. Additional private paths outside these locations, such as external job SSH keys, must be listed in `extra_paths`.
+
+The destination and archives are root-private (`0700` directory, `0600` files); archives contain credentials and must not be put in Git or shared support logs. This is an application backup, not an operating-system image. The default destination is on the Pi's local filesystem; use the Step 5 private-copy/checksum procedure if you also want a separate off-device copy.
+
+#### Install the private configuration
+
+Install the root-owned helpers, Python support modules, units, and tmpfiles rule from Step 12 first. Python 3 and the existing Node 24 runtime are required. Copy the example only if a real configuration does not already exist:
 
 ```bash
-sudo systemctl stop pi-script-dashboard-update.path
-sudo systemctl stop pi-script-dashboard.service pi-script-dashboard-worker.service
-BACKUP_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-STATE_SNAPSHOT="/var/lib/pi-script-dashboard/backups/manual-${BACKUP_STAMP}"
-sudo -u pi-dashboard /usr/local/bin/node /opt/pi-script-dashboard/bin/backup.js \
-  --db /var/lib/pi-script-dashboard/dashboard.sqlite --output "$STATE_SNAPSHOT"
-sudo tar --acls --xattrs -C / -czf "/root/dashboard-state-${BACKUP_STAMP}.tar.gz" \
-  "var/lib/pi-script-dashboard/backups/manual-${BACKUP_STAMP}" \
-  var/lib/pi-script-dashboard/scripts var/lib/pi-script-dashboard/configs \
-  var/log/pi-script-dashboard etc/pi-script-dashboard/environment \
-  etc/systemd/system/pi-script-dashboard.service \
-  etc/systemd/system/pi-script-dashboard-worker.service
-sudo chmod 0600 "/root/dashboard-state-${BACKUP_STAMP}.tar.gz"
-sudo sha256sum "/root/dashboard-state-${BACKUP_STAMP}.tar.gz"
-sudo systemctl start pi-script-dashboard-worker.service pi-script-dashboard.service
-sudo -u pi-dashboard /usr/local/bin/node /opt/pi-script-dashboard/bin/control.js \
-  --db /var/lib/pi-script-dashboard/dashboard.sqlite resume
-sudo systemctl start pi-script-dashboard-update.path
+sudo test -e /etc/pi-script-dashboard/backup.json || \
+  sudo install -o root -g root -m 0600 \
+    /opt/pi-script-dashboard/deploy/backup.example.json \
+    /etc/pi-script-dashboard/backup.json
+sudoedit /etc/pi-script-dashboard/backup.json
+sudo stat -c '%U %G %a %n' /etc/pi-script-dashboard/backup.json
 ```
 
-Include all reviewed service drop-ins, the deployed commit, and root-owned authentication/update configuration in the private backup record. Copy the archive off-device and verify its checksum using the handling procedure in Step 5. Never tar or copy the active WAL/SHM files as a substitute for the SQLite snapshot.
+Set `backup_directory` to `/var/lib/pi-script-dashboard/backups/pi-dashboard`, `keep` to `7`, and the mail recipient to your chosen failure-alert address. Retain the default runtime/repository paths unless the actual installation uses different locations. The root-owned configuration uses `mail.transport: "auto"` to reuse an installed `sendmail`-compatible command or `msmtp` and its existing outgoing-mail configuration. Check availability without printing configuration or credentials:
 
-For a same-version database restore, first drain/stop both services and disable the update watcher. Back up and temporarily remove the service-user crontab to stop enqueue writers, as in Step 23. Preserve the failed database and its WAL/SHM as a root-only forensic copy. Restore the snapshot `dashboard.sqlite` as `pi-dashboard:pi-dashboard`, mode 0600, with no stale destination WAL/SHM, then restore matching scripts/configs/captured logs and the reviewed crontab. Run `bin/migrate.js --db ... --sync-only`, start both services, inspect status, and explicitly resume. Restoring a snapshot rolls back runs queued after that snapshot; review those triggers before restoring schedules.
+```bash
+command -v sendmail || command -v msmtp
+```
 
-For a code rollback, restore a matching database snapshot and its crontab before enabling the older release; do not run an older schema against a newer database. For rollback to the JSON release, restore the preserved legacy registry and pre-import service-user crontab together and disable the worker. The root-credential, root-cron, tunnel, and Node rollback procedures in Step 23 still apply. Keep Cloudflare Access enabled throughout recovery.
+For explicit SMTP instead, choose `mail.transport: "smtp"`, configure `smtp_host`, `smtp_port`, `smtp_security` (`starttls` or `tls`), `from`, and `to`. If authentication is required, set `smtp_username` and `smtp_password_file`; create that password file directly on the Pi with `sudoedit`, owned by root with mode `0600`. Do not paste the password into chat, commit it, or put it on a command line. Leave SMTP unset when using the existing outgoing-mail setup.
+
+Review `extra_paths` for application-owned dependencies outside the default state/config, tunnel, and mail locations. Include a specific external SSH directory/key path only when it belongs to an application job. Do not add `/`, `/root`, whole user homes, unrelated root keys, or the backup destination. Extra paths are backed up as data; they are never sourced or executed. A custom backup/state/log path outside the default writable roots also needs an explicit, reviewed `ReadWritePaths` drop-in for the backup service.
+
+The backup configuration, any SMTP password file, and their parent directory chain must be root-owned, without symlinks or non-root write permission. The helper refuses unsafe configuration. An unresolved script/config edit recovery marker also blocks a normal backup: finish **Recovering an interrupted script/config edit** before retrying. If originals are missing or a recovery journal is corrupt, stop writers and preserve a private forensic copy of the database/WAL/SHM and full `edit-recovery` directory for investigation; do not remove the marker to force a successful backup.
+
+#### Verify mail, run once, then enable the timer
+
+The following first command deliberately sends a test failure notification through the same path used by a failed scheduled backup. Confirm its arrival in the recipient mailbox; a local mail command accepting a message does not itself prove delivery.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/pi-script-dashboard.conf
+sudo /usr/local/libexec/pi-script-dashboard-backup --config /etc/pi-script-dashboard/backup.json --check
+sudo systemctl start pi-script-dashboard-backup-failure.service
+sudo journalctl -u pi-script-dashboard-backup-failure.service --since '-5 minutes' --no-pager
+
+sudo systemctl start pi-script-dashboard-backup.service
+sudo systemctl status pi-script-dashboard-backup.service --no-pager --full
+sudo journalctl -u pi-script-dashboard-backup.service --since '-2 hours' --no-pager
+sudo ls -lh /var/lib/pi-script-dashboard/backups/pi-dashboard
+sudo systemctl status pi-script-dashboard.service pi-script-dashboard-worker.service --no-pager
+
+sudo systemctl enable --now pi-script-dashboard-backup.timer
+systemctl list-timers pi-script-dashboard-backup.timer --all
+systemd-analyze calendar 'Sun *-*-* 03:00:00 America/New_York'
+```
+
+Expected: one `.tar.gz` archive and its `.sha256` file; the web/worker/watcher and drain state match their pre-backup state; the timer reports the next Sunday run in the specified timezone. The helper verifies the archive before publishing it and prunes only recognized complete backups after successful publication. Scheduled, manual, and pre-update full backups share the same seven-backup retention. Do not rename unrelated archives to the managed backup naming pattern. Archive retention is independent of the worker's 30-day run-history retention.
+
+To run an extra full backup at any time, use `sudo systemctl start pi-script-dashboard-backup.service`. The service timeout is two hours, including the configured drain wait (one hour by default). Check the journal while it waits; do not bypass the shared lock or stop the worker to force it. If failure mail cannot be sent, the notification unit fails visibly in `systemctl --failed` and records a sanitized error in its journal. Restore the existing outgoing-mail configuration and rerun the notification unit; message delivery cannot be guaranteed during an SMTP/network outage.
+
+#### Restore the complete application
+
+Restore code, state, configuration, and schedules from the same archive. Do not run older code against a newer schema. Reinstall the supported OS packages, Node 24, and dedicated account/groups from this runbook before recovery onto a replacement Pi. Preserve the failed installation and current service-user crontab privately before replacing files. Keep Cloudflare Access enabled throughout recovery.
+
+1. Disable the backup timer and update watcher. Drain active jobs if the worker is healthy, then stop the web and worker. Save and temporarily remove the service-user crontab to stop enqueue writers; preserve unrelated lines for review. Do not alter root cron. Keep the authentication broker/tunnel unchanged until their saved configuration has been reviewed.
+2. Verify the selected archive's `.sha256` in its backup directory. List archive members, then extract into a new root-only staging directory, never over the running installation. For the default backup location:
+
+   ```bash
+   sudo systemctl disable --now pi-script-dashboard-backup.timer
+   sudo systemctl stop pi-script-dashboard-update.path
+   # Drain/wait-idle as above before stopping a healthy worker.
+   sudo systemctl stop pi-script-dashboard.service pi-script-dashboard-worker.service
+   sudo install -d -o root -g root -m 0700 /root/pi-dashboard-recovery
+   sudo sh -c 'crontab -u pi-dashboard -l > /root/pi-dashboard-recovery/current.crontab' || true
+   sudo crontab -u pi-dashboard -r
+   # Replace the exact archive basename; retain its matching checksum file.
+   ARCHIVE='REPLACE_WITH_COMPLETE_ARCHIVE.tar.gz'
+   sudo sh -c 'cd /var/lib/pi-script-dashboard/backups/pi-dashboard && sha256sum -c -- "$1.sha256"' sh "$ARCHIVE"
+   sudo tar -tzf "/var/lib/pi-script-dashboard/backups/pi-dashboard/$ARCHIVE"
+   sudo install -d -o root -g root -m 0700 /root/pi-dashboard-recovery/extracted
+   sudo tar --acls --xattrs -xzf "/var/lib/pi-script-dashboard/backups/pi-dashboard/$ARCHIVE" \
+     -C /root/pi-dashboard-recovery/extracted
+   ```
+
+3. Read `backup-metadata/manifest.json` privately for the recorded source paths, `git_commit`, and `database_original_path`. Preserve the current checkout/state/log directories as forensic copies outside the extraction destination. Since `.git` is excluded, clone the repository as `pi-dashboard` and check out the recorded commit before overlaying its archived application files; this restores the Git metadata needed by the updater. If a commit was unavailable, preserve the exact archived files and establish a reviewed repository baseline before using updates. Restore the runtime scripts/configs/retained logs and reviewed extra paths to their recorded locations with their saved ownership/modes. Exclude the existing backup destination from replacement; keep these archives. Do not merge a restored database with stale destination `-wal`/`-shm` files. Install `backup-metadata/dashboard.sqlite` at the recorded database path as `pi-dashboard:pi-dashboard`, mode `0600`.
+4. Restore reviewed `/etc/pi-script-dashboard` files root-owned with their private permissions. Review saved units, drop-ins, PAM/tmpfiles/logrotate rules, maintenance helpers, and optional tunnel/SSH credentials before installing them into their original paths. Preserve the root-owned executable/support-module layout from Step 12; never run a root helper directly from the service-owned checkout. Recreate transient directories with tmpfiles and reinstall dependencies from the archived lockfile with `npm ci --omit=dev --ignore-scripts` as `pi-dashboard`. New sessions will be created on login.
+5. Review `backup-metadata/service-user.crontab` against the pre-recovery table and preserve unrelated current lines. Restore the matching dashboard entries as `pi-dashboard`, then run `bin/migrate.js --db /var/lib/pi-script-dashboard/dashboard.sqlite --sync-only` as that user. Snapshot restore rolls back runs queued after the snapshot; review those triggers before enabling schedules.
+6. Reload systemd, start the broker, worker, and website, and inspect their journals. Validate login, saved job/history/logs, loopback-only ports, and one harmless manual run. Explicitly resume dispatch only after validation. Restore the original paused schedules and update watcher, test failure mail, run a fresh full backup, and re-enable the weekly timer after it succeeds.
+
+For rollback to the old JSON release, restore the preserved legacy registry and pre-import service-user crontab together and disable the worker. The root-credential, root-cron, tunnel, and Node rollback procedures in Step 23 still apply. Importer recovery backups remain an internal migration safeguard; they do not replace the full application archive.
 
 ### Local progress and log reports
 
@@ -1769,6 +1858,9 @@ Completed run details and captured logs expire after 30 days by default. Active 
 ```bash
 sudo systemctl --failed
 sudo systemctl status pi-script-dashboard.service pi-script-dashboard-worker.service pi-script-dashboard-auth.service cloudflared.service --no-pager
+sudo systemctl status pi-script-dashboard-backup.timer --no-pager
+systemctl list-timers pi-script-dashboard-backup.timer --all
+sudo journalctl -u pi-script-dashboard-backup.service -u pi-script-dashboard-backup-failure.service --since '-8 days' --no-pager
 sudo journalctl -u pi-script-dashboard.service -p warning --since '-7 days' --no-pager
 sudo journalctl -u cloudflared.service -p warning --since '-7 days' --no-pager
 sudo -u pi-dashboard crontab -l
@@ -1901,6 +1993,9 @@ Deployment is complete only when every item is true:
 - [ ] Worker is independent, unprivileged, and has only required writable data paths.
 - [ ] Web restart preserves active runs/hooks; scheduled enqueue works with the web stopped.
 - [ ] Updates drain active runs before changing code/dependencies and preserve queued runs.
+- [ ] Full-backup helpers/modules/configuration are root-owned; the shared root-only maintenance lock serializes backups and updates.
+- [ ] One full archive and its checksum verify successfully; restoration paths/ownership have been reviewed.
+- [ ] The weekly Sunday 03:00 America/New_York timer is enabled, keeps seven complete archives, and the failure notification reaches the intended mailbox.
 - [ ] LAN/public direct access to port 8080 fails.
 - [ ] Cloudflare Access uses an explicit allowlist and MFA.
 - [ ] Tunnel route has Protect with Access enabled and a 404 catch-all.

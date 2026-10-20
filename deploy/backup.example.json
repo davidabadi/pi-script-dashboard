@@ -1,0 +1,17 @@
+{
+  "backup_directory": "/var/lib/pi-script-dashboard/backups/pi-dashboard",
+  "keep": 7,
+  "runtime_root": "/var/lib/pi-script-dashboard",
+  "script_root": "/var/lib/pi-script-dashboard/scripts",
+  "config_root": "/var/lib/pi-script-dashboard/configs",
+  "log_root": "/var/log/pi-script-dashboard",
+  "db_file": "/var/lib/pi-script-dashboard/dashboard.sqlite",
+  "repo_root": "/opt/pi-script-dashboard",
+  "service_user": "pi-dashboard",
+  "extra_paths": [],
+  "drain_timeout_seconds": 3600,
+  "mail": {
+    "transport": "auto",
+    "to": "backup-alerts@example.com"
+  }
+}

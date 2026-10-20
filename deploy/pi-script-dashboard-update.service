@@ -5,10 +5,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/libexec/pi-script-dashboard-update
-RuntimeDirectory=pi-script-dashboard-update
-RuntimeDirectoryMode=0700
 # The helper reports a durable drain timeout instead of being killed mid-update.
-TimeoutStartSec=30min
+TimeoutStartSec=3h
 PrivateTmp=true
 ProtectHome=true
 ProtectKernelTunables=true

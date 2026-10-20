@@ -4,7 +4,7 @@ set -eu
 request=/var/lib/pi-script-dashboard/update.request
 repo=/opt/pi-script-dashboard
 db=/var/lib/pi-script-dashboard/dashboard.sqlite
-lockdir=/run/pi-script-dashboard-update
+lockdir=/run/pi-script-dashboard-maintenance
 stopped=0
 complete=0
 
@@ -13,11 +13,16 @@ test -f "$request" || exit 0
 # runtime paths. flock coordinates actual processes; file existence is no lock.
 install -d -o root -g root -m 0700 "$lockdir"
 umask 077
-exec 9>"$lockdir/update.lock"
-flock -n 9 || exit 0
+exec 9>"$lockdir/maintenance.lock"
+if ! flock -w 3600 9; then
+  runuser -u pi-dashboard -- /usr/local/bin/node "$repo/bin/control.js" --db "$db" \
+    update failed 'Timed out waiting for an application backup or update to finish.' 9>&- || true
+  rm -f -- "$request"
+  exit 1
+fi
 
 control() {
-  runuser -u pi-dashboard -- /usr/local/bin/node "$repo/bin/control.js" --db "$db" "$@"
+  runuser -u pi-dashboard -- /usr/local/bin/node "$repo/bin/control.js" --db "$db" "$@" 9>&-
 }
 cleanup() {
   result=$?
@@ -42,19 +47,19 @@ control --timeout 900 wait-idle
 # Never change executable files/dependencies while an old worker has children.
 stopped=1
 systemctl stop pi-script-dashboard.service pi-script-dashboard-worker.service
-control update updating 'Worker drained. Backing up state and installing the reviewed release.'
-backup_dir="/var/lib/pi-script-dashboard/backups/update-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-# The updater sandbox prevents setgid privilege gain. Grant the cron helper's
-# spool group to only these subprocesses, without changing global memberships.
-runuser -u pi-dashboard -g pi-dashboard -G crontab -- /usr/local/bin/node "$repo/bin/backup.js" --db "$db" --output "$backup_dir"
-checkout_status=$(runuser -u pi-dashboard -- git -C "$repo" status --porcelain)
+control update updating 'Worker drained. Taking a full application backup before installing the reviewed release.'
+# The fixed root-owned helper shares this lock and uses Python's SQLite backup
+# API as the service user. It never executes application code with root rights.
+/usr/local/libexec/pi-script-dashboard-backup --config /etc/pi-script-dashboard/backup.json --already-stopped --lock-fd 9
+checkout_status=$(runuser -u pi-dashboard -- git -C "$repo" status --porcelain 9>&-)
 if [ -n "$checkout_status" ]; then
   echo 'Update refused: checkout has local changes. Review and preserve them before retrying.' >&2
   exit 1
 fi
-runuser -u pi-dashboard -- git -C "$repo" pull --ff-only
-runuser -u pi-dashboard -- /usr/local/bin/npm --prefix "$repo" ci --omit=dev --ignore-scripts
-runuser -u pi-dashboard -g pi-dashboard -G crontab -- /usr/local/bin/node "$repo/bin/migrate.js" --db "$db" --sync-only
+runuser -u pi-dashboard -- git -C "$repo" pull --ff-only 9>&-
+runuser -u pi-dashboard -- /usr/local/bin/npm --prefix "$repo" ci --omit=dev --ignore-scripts 9>&-
+# Explicit group access keeps the cron helper functional under NoNewPrivileges.
+runuser -u pi-dashboard -g pi-dashboard -G crontab -- /usr/local/bin/node "$repo/bin/migrate.js" --db "$db" --sync-only 9>&-
 systemctl start pi-script-dashboard-worker.service pi-script-dashboard.service
 systemctl is-active --quiet pi-script-dashboard-worker.service pi-script-dashboard.service
 control --timeout 30 wait-idle

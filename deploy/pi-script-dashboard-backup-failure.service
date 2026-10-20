@@ -1,0 +1,30 @@
+[Unit]
+Description=Email notification for a failed full Pi Script Dashboard backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+# Notification reads mail settings independently of backup destination availability.
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/pi-script-dashboard-backup-support/backup_notification.py --config /etc/pi-script-dashboard/backup.json --unit pi-script-dashboard-backup.service
+TimeoutStartSec=2min
+UMask=0077
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+# Permit a configured local sendmail transport to write its mail queue under /var.
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

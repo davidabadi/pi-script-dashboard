@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly full Pi Script Dashboard backup
+
+[Timer]
+OnCalendar=Sun *-*-* 03:00:00 America/New_York
+RandomizedDelaySec=5m
+Persistent=true
+Unit=pi-script-dashboard-backup.service
+
+[Install]
+WantedBy=timers.target

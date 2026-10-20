@@ -1,0 +1,32 @@
+[Unit]
+Description=Full Pi Script Dashboard application backup
+After=network-online.target
+Wants=network-online.target
+OnFailure=pi-script-dashboard-backup-failure.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/libexec/pi-script-dashboard-backup --config /etc/pi-script-dashboard/backup.json
+TimeoutStartSec=2h
+TimeoutStopSec=60s
+UMask=0077
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+# Root-owned configuration and executable helpers stay read-only.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pi-script-dashboard /var/log/pi-script-dashboard /run/pi-script-dashboard-maintenance
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

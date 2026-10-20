@@ -24,6 +24,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Check deployment updater shell syntax
         run: bash -n deploy/pi-script-dashboard-update
+      - name: Test backup, mail, and deployment Python helpers
+        run: python3 -m unittest discover -s test -p '*_test.py'
       - run: npm run check
       - run: npm run audit:production
 
@@ -39,7 +41,7 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sasl2-bin cron python3 util-linux
-      - name: Test the interactive PAM diagnostic
+      - name: Test backup, mail, and authentication helpers on Debian
         run: python3 -m unittest discover -s test -p '*_test.py'
       - name: Exercise packaged PAM broker and per-user cron
         env:
