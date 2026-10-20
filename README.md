@@ -1,10 +1,10 @@
 # Pi Script Dashboard
 
-A private Raspberry Pi console for editing, scheduling, and running local maintenance scripts. SQLite stores job definitions and run history; an independent unprivileged worker executes jobs while the authenticated website displays progress and live logs.
+A private Raspberry Pi console for editing, scheduling, and running local maintenance scripts. SQLite stores job definitions and run history; an independent unprivileged worker executes jobs while the authenticated single-page application displays progress and live logs.
 
 - Manual and cron triggers share a durable queue with one queued/running run per job.
 - Status comes from actual process exit results, with optional local progress, log, and partial-outcome hooks.
-- Authenticated polling refreshes status and incremental logs every two seconds. History includes outcomes, timestamps, duration, and captured logs.
+- One authenticated server-sent event connection pushes status, run history, and incremental logs when they change. Dashboard, editor, and log navigation stay in the SPA; reconnects resume captured logs from their byte cursor.
 - Jobs choose configured file logs or captured stdout/stderr. Completed run details/logs retain 30 days by default, with a 10 MiB capture cap per run; each job keeps its latest outcome summary.
 - Renaming preserves job IDs and history. Script/config files and captured logs stay on disk.
 - Full application backups run weekly, keep the last seven verified archives in `/var/lib/pi-script-dashboard/backups/pi-dashboard`, and email on failure using the Pi's existing outgoing-mail configuration. Each archive includes a consistent SQLite snapshot, scripts/configs, logs, application code, and deployment settings.
@@ -24,6 +24,8 @@ npm run audit:production
 Use Node 24 for development and CI; SQLite uses `node:sqlite` without a database dependency. The checked-in `public/tailwind.css` is the production asset; regenerate it with `npm run build:css` only when changing styles.
 
 The web process (`node server.js`) and worker (`node worker.js`) are separate services. Runtime paths and defaults are documented in [deploy/environment.example](deploy/environment.example). A fresh installation starts with an empty SQLite database; add jobs through the dashboard.
+
+The browser subscribes to `/api/events`. Filesystem notifications carry committed database changes and captured-log writes between the worker, cron CLI, and web process. Keepalive comments maintain the open connection without requesting status or logs. Local script reporting hooks remain on the worker's private loopback listener.
 
 ## Existing installations
 

@@ -9,7 +9,7 @@ This repository contains a hardened web console for running and scheduling maint
 - editable jobs run as the unprivileged `pi-dashboard` account;
 - scripts, configs, logs, locks, sessions, and runtime metadata are confined to dedicated directories.
 
-This is the complete upgrade and deployment runbook. SQLite is the active registry; the independent worker runs jobs and accepts local reports on `127.0.0.1:8081`. The web service remains on `127.0.0.1:8080`. Read it once before running commands. Do not skip a red-flag check: each one is a stop condition until understood and resolved.
+This is the complete upgrade and deployment runbook. SQLite is the active registry; the independent worker runs jobs and accepts local reports on `127.0.0.1:8081`. The web service remains on `127.0.0.1:8080`, serving the single-page application and authenticated `/api/events` push stream. Read it once before running commands. Do not skip a red-flag check: each one is a stop condition until understood and resolved.
 
 ## SQLite release: choose the correct starting point
 
@@ -33,6 +33,8 @@ For an existing hardened deployment with jobs already under the managed roots:
 6. Copy the importer backup to protected off-device storage. The newly imported schedules remain paused for acceptance. Enable the worker and web service, verify both loopback listeners, and perform Step 21. Only after acceptance restore the originally active schedules using the dashboard, retain originally paused schedules, and re-enable the update watcher. SQLite is authoritative after cutover; keep the preserved JSON and pre-pause crontab backup for recovery.
 
 For a legacy deployment with scripts outside the managed roots, follow all numbered steps, including copies and security review of scripts/configs. Step 15 intentionally stages old-format entries paused so Step 16 can import and rewrite them before worker dispatch starts. Root schedules must be disabled before the new worker starts.
+
+An installation already using this release's SQLite registry upgrades to SPA/push updates through the existing drain-aware update procedure in Step 24. Drain active jobs before replacing either web or worker code; both use the new change channel. The SPA/SSE change requires no new database migration, listener, environment setting, or systemd unit change. Preserve the existing worker sandbox and application-specific writable paths.
 
 ## 1. Scope and assumptions
 
@@ -1517,6 +1519,8 @@ Open another SSH session for commands.
 - For the four-job legacy example, confirm those four migrated jobs appear; otherwise compare with the actual migration record. A fresh installation starts empty.
 - Confirm `Update + Reboot` does not appear.
 - Open each log.
+- Navigate among the dashboard, editor, and run history, then use browser Back/Forward and reload a deep link. The SPA keeps the selected view and loads editor assets when needed.
+- In browser developer tools, confirm one active `GET /api/events` connection for the view, with `Content-Type: text/event-stream`. Leave it idle: there should be no recurring status/history/log HTTP requests. Keepalive comments on the existing connection are expected.
 
 Red flags: a legacy path warning, server error, missing CSS/editor asset, CSP errors in browser developer tools, or another user’s cached content.
 
@@ -1560,10 +1564,14 @@ Expected:
 - the worker tracks an active run; any script-owned lock remains the script’s responsibility;
 - the log is updated;
 - the recorded outcome reflects the actual process exit code with narrowly granted permissions: exit 0 succeeds, nonzero fails, and an otherwise successful run with a partial report is partial; log words or emoji do not decide the outcome;
-- logs/status refresh every two seconds, history contains timestamps/duration, and renaming preserves past runs;
+- status, history, and captured logs arrive through the open event stream as changes occur; history contains timestamps/duration, and renaming preserves past runs;
+- disable and restore the browser network connection; the reconnect indicator appears, then the selected run resumes at its last received log byte without duplicate lines;
+- scrolling away from the log tail preserves the reading position as new text arrives; following the tail scrolls to new output;
 - restarting only the web service leaves the worker job and reporting hook alive;
 - an enqueue CLI trigger works while the web service is stopped;
 - duplicate triggers show already queued/running, with skipped cron attempts in history.
+
+Leave a view unattended until its application session expires, and verify a clear sign-in message appears instead of a permanent reconnect loop. Sign in again and confirm history/log access recovers. Logout in another dashboard tab must close that session's live streams. Retest a web-only restart: the browser reconnects with a fresh state snapshot while the worker job and private reporting hook continue.
 
 Red flags: process runs as root, credentials appear in logs, lock remains after completion, job writes legacy paths, or permissions are broadened as a workaround.
 
@@ -1712,6 +1720,18 @@ sudo -u pi-dashboard git -C /opt/pi-script-dashboard log --oneline --decorate HE
 ```
 
 Expected: clean working tree and only reviewed commits pending.
+
+### Browser push updates and SPA navigation
+
+After sign-in, dashboard, editor, and log/history views share one page shell and use browser history for navigation. The browser keeps one authenticated `GET /api/events` stream active for its current view. The stream sends an initial state snapshot and, when a job/run is selected, its recent history and captured log bytes. Job actions keep their existing same-origin and CSRF protections. The worker's `POST /api/runs/:runId/events` endpoint is a separate local reporting hook; it remains outside the tunnel.
+
+Committed Store mutations write a bounded private `${DB_FILE}.changes` wakeup file. The web process watches its parent directory so atomic replacement does not detach the subscription. Captured per-run log writes are watched in `${LOG_ROOT}/runs`. Linux delivers these filesystem changes through inotify; same-process changes also notify subscribers directly. Routine worker heartbeat updates do not broadcast dashboard refreshes, while worker start/stop and a return after stale heartbeat do. Normal browser updates do not require repeated HTTP requests or periodic registry/log scans.
+
+Transport keepalive comments use the existing open response and carry no status/log payload. Separate local timers enforce session expiry, worker liveness, and slow-client limits. An open stream does not extend the 30-minute idle session or its 12-hour maximum lifetime. Logout closes all streams for that application session; connection counts are bounded, including multiple browser tabs.
+
+On reconnect, the server sends current SQLite state and recent history. A `Last-Event-ID` value of `log:<runId>:<nextByteOffset>` resumes the selected run's captured log; a byte-offset query also supports reopening a view. Notifications are wakeups rather than a durable event journal, so the initial/reconnection snapshot and authoritative captured files recover changes missed while disconnected. The browser displays reconnection and authentication failures clearly. Historical log text remains escaped, and tail following respects the reader's scroll position.
+
+Keep the existing Cloudflare Access and cache-bypass settings for `/api/events`; the response must remain an uncached streaming response. No new public port, inbound webhook route, CORS exception, or systemd setting is needed. If live updates stop, inspect the web journal for change-notification directory permissions or watcher errors and confirm the browser receives a streaming response through the tunnel. Use the normal drain-aware update procedure when changing web/worker code; do not replace shared modules while a job is executing.
 
 ### Worker drain and recovery
 

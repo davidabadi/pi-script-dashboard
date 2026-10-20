@@ -11,7 +11,7 @@ const { readConfig } = require("../lib/config");
 const { Store } = require("../lib/store");
 const { RunLogWriter } = require("../lib/run-logs");
 
-async function fixture(t, { cronFailure = false, legacy = false } = {}) {
+async function fixture(t, { cronFailure = false, legacy = false, liveOptions } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "dashboard-web-"));
   const env = { NODE_ENV: "development", RUNTIME_ROOT: root, LOG_ROOT: path.join(root, "logs"), LOCK_ROOT: path.join(root, "locks"),
     SESSION_SECRET: "fixture-only-session-secret-32-bytes", TRUSTED_HOSTS: "localhost:8080" };
@@ -23,7 +23,7 @@ async function fixture(t, { cronFailure = false, legacy = false } = {}) {
   const server = http.createServer();
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
   env.TRUSTED_HOSTS = `127.0.0.1:${server.address().port}`;
-  const app = createApp({ env, config, store, sessionStore: sessions,
+  const app = createApp({ env, config, store, sessionStore: sessions, liveOptions,
     authenticate: async (username, password) => username === "admin" && password === "fixture-only",
     cronIO: { readCrontab: () => cron, writeCrontab: (value) => { if (cronFailure) throw new Error("fixture cron unavailable"); cron = value; } } });
   server.on("request", app);
@@ -42,9 +42,13 @@ async function fixture(t, { cronFailure = false, legacy = false } = {}) {
     const response = await request("/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ username: "admin", password: "fixture-only", _csrf: csrf }) });
     assert.equal(response.status, 302, await response.text());
-    if (!legacy) csrf = /name="_csrf" value="([^"]+)"/.exec(await (await request("/")).text())[1];
+    if (!legacy) csrf = /"csrfToken":"([^"]+)"/.exec(await (await request("/")).text())[1];
   }
   async function post(url, body, headers = {}) {
+    if (url.startsWith("/edit/") && body.revision === undefined) {
+      const saved = store.getJobByName(decodeURIComponent(url.slice("/edit/".length)));
+      if (saved) body = { ...body, revision: (await (await request(`/api/jobs/${saved.id}/editor`)).json()).job?.revision };
+    }
     return request(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": csrf, ...headers }, body: new URLSearchParams(body) });
   }
   async function addJob(overrides = {}) {
@@ -55,7 +59,7 @@ async function fixture(t, { cronFailure = false, legacy = false } = {}) {
     if (!saved) assert.fail(await (await request("/")).text());
     return { saved, values };
   }
-  t.after(async () => { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); store.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  t.after(async () => { app.locals.closeLive(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); store.close(); fs.rmSync(root, { recursive: true, force: true }); });
   return { root, env, config, store, sessions, server, request, login, post, addJob, cron: () => cron };
 }
 
@@ -144,7 +148,7 @@ test("failed schedule sync leaves dispatch paused and gives a visible recovery a
   f.store.enqueue(saved.id);
   assert.equal(f.store.claimNext(), null);
   const html = await (await f.request("/")).text();
-  assert.match(html, /Retry schedule sync/);
+  assert.match(html, /"schedulerPending":true/);
   assert.match(html, /fixture cron unavailable/);
 });
 
@@ -175,8 +179,9 @@ test("saving before the editors load cannot replace existing script contents", a
   await f.post("/edit/Backup", { ...values, content: "", editor_ready: "false" });
   assert.equal(fs.readFileSync(saved.script, "utf8"), "echo hello");
   const form = await (await f.request("/edit/Backup")).text();
-  assert.match(form, /id="save-script"[^>]*disabled/);
-  assert.match(form, /id="hidden-content" value="echo hello"/);
+  assert.match(form, /id="app-main"/);
+  const editor = await (await f.request(`/api/jobs/${saved.id}/editor`)).json();
+  assert.equal(editor.job.content, "echo hello");
 });
 
 test("durable update waiting and terminal failure are returned without guessing from lock files", async (t) => {
@@ -191,7 +196,7 @@ test("durable update waiting and terminal failure are returned without guessing 
   assert.equal(data.updating, false);
 });
 
-test("background polling does not extend an unattended administrator's idle deadline", async (t) => {
+test("background reads do not extend an unattended administrator's idle deadline", async (t) => {
   const f = await fixture(t); await f.login();
   let expected;
   await new Promise((resolve, reject) => f.sessions.all((error, values) => {
@@ -209,4 +214,129 @@ test("background polling does not extend an unattended administrator's idle dead
     f.sessions.set(id, value, (failure) => failure ? reject(failure) : resolve());
   }));
   assert.equal((await f.request("/api/jobs")).status, 401);
+});
+
+test("dashboard routes share the SPA shell and editor source is fetched only on request", async (t) => {
+  const f = await fixture(t); await f.login();
+  const { saved } = await f.addJob({ content: "echo private-editor-source" });
+  for (const route of ["/", "/new", "/edit/Backup", "/log/Backup"]) {
+    const response = await f.request(route);
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(html, /id="app-main"/);
+    assert.match(html, /src="\/app\.js/);
+    assert.equal(html.includes("echo private-editor-source"), false);
+  }
+  const editor = await (await f.request(`/api/jobs/${saved.id}/editor`)).json();
+  assert.equal(editor.job.content, "echo private-editor-source");
+  assert.match(editor.job.revision, /^[a-f0-9]{64}$/);
+  assert.match((await (await f.request("/api/crontab")).json()).text, /# unrelated/);
+});
+
+test("SPA actions return structured results and expired mutations return 401 instead of login HTML", async (t) => {
+  const f = await fixture(t); await f.login();
+  const { saved, values } = await f.addJob();
+  const headers = { Accept: "application/json" };
+  let response = await f.post("/run/Backup", {}, headers);
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).snapshot.jobs[0].status, "queued");
+  response = await f.post("/run/Backup", {}, headers);
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).message, /already queued or running/);
+  const before = f.store.listRuns(saved.id).length;
+  response = await f.post("/new", { ...values, name: "Duplicate", script: path.join(f.root, "outside.sh") }, headers);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).ok, false);
+  assert.equal(f.store.listRuns(saved.id).length, before);
+  await new Promise((resolve, reject) => f.sessions.all((error, entries) => {
+    if (error) return reject(error);
+    const [id, value] = Object.entries(entries).find(([, sessionValue]) => sessionValue.logged_in);
+    value.absoluteExpiresAt = Date.now() - 1;
+    f.sessions.set(id, value, resolve);
+  }));
+  response = await f.post("/run/Backup", {}, headers);
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("location"), null);
+  assert.match((await response.json()).error, /Session expired/);
+});
+
+test("an editor's stale revision cannot overwrite newer script or config contents", async (t) => {
+  const f = await fixture(t); await f.login();
+  const { saved, values } = await f.addJob();
+  const loaded = await (await f.request(`/api/jobs/${saved.id}/editor`)).json();
+  const headers = { Accept: "application/json" };
+  let response = await f.post("/edit/Backup", { ...values, content: "echo first-editor", revision: loaded.job.revision }, headers);
+  assert.equal(response.status, 200);
+  response = await f.post("/edit/Backup", { ...values, content: "echo stale-editor", revision: loaded.job.revision }, headers);
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).message, /changed since you opened/);
+  assert.equal(fs.readFileSync(saved.script, "utf8"), "echo first-editor");
+  const current = await (await f.request(`/api/jobs/${saved.id}/editor`)).json();
+  fs.writeFileSync(saved.script, "echo external-file-update");
+  response = await f.post("/edit/Backup", { ...values, content: "echo overwrite", revision: current.job.revision }, headers);
+  assert.equal(response.status, 409);
+  assert.equal(fs.readFileSync(saved.script, "utf8"), "echo external-file-update");
+  assert.equal(f.store.getSetting("scheduler_pending"), false);
+  assert.equal(f.store.getSetting("content_recovery"), null);
+});
+
+test("only explicit SPA navigation or actions renew idle activity", async (t) => {
+  const f = await fixture(t); await f.login();
+  let original;
+  const read = () => new Promise((resolve, reject) => f.sessions.all((error, entries) => error ? reject(error) : resolve(Object.entries(entries).find(([, value]) => value.logged_in))));
+  const [id, value] = await read();
+  value.lastActivityAt = original = Date.now() - 60000;
+  await new Promise(resolve => f.sessions.set(id, value, resolve));
+  await f.request("/api/jobs");
+  assert.equal((await read())[1].lastActivityAt, original);
+  assert.equal((await f.post("/api/activity", {}, { Accept: "application/json" })).status, 200);
+  assert.ok((await read())[1].lastActivityAt > original);
+});
+
+test("authenticated SSE forwards committed state and incremental logs and closes on logout", async (t) => {
+  const f = await fixture(t); await f.login();
+  const { saved } = await f.addJob();
+  const run = f.store.enqueue(saved.id).run;
+  const controller = new AbortController();
+  const response = await f.request(`/api/events?jobId=${saved.id}&runId=${run.id}`, { signal: controller.signal });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/event-stream/);
+  assert.equal(response.headers.get("set-cookie"), null);
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let pending = "";
+  const frames = [];
+  async function next(type, predicate = () => true) {
+    let timer;
+    const reading = (async () => {
+      for (;;) {
+        const index = frames.findIndex(frame => frame.type === type && predicate(frame.data));
+        if (index !== -1) return frames.splice(index, 1)[0].data;
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error(`Stream ended before ${type}`);
+        pending += decoder.decode(chunk.value, { stream: true });
+        let boundary;
+        while ((boundary = pending.indexOf("\n\n")) !== -1) {
+          const frame = pending.slice(0, boundary); pending = pending.slice(boundary + 2);
+          const kind = /^event: (.+)$/m.exec(frame)?.[1], body = /^data: (.+)$/m.exec(frame)?.[1];
+          if (kind && body) frames.push({ type: kind, data: JSON.parse(body) });
+        }
+      }
+    })();
+    try { return await Promise.race([reading, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`No ${type} event`)), 2500); })]); }
+    finally { clearTimeout(timer); }
+  }
+  try {
+    assert.equal((await next("snapshot")).jobs[0].status, "queued");
+    assert.equal((await next("history")).runs[0].id, run.id);
+    const claimed = f.store.claimNext();
+    assert.equal((await next("snapshot", value => value.jobs[0].status === "running")).jobs[0].latest_run.id, run.id);
+    const writer = new RunLogWriter(f.config, claimed);
+    writer.append("<script>literal UTF-8 café 🍓</script>\n"); writer.close();
+    assert.equal((await next("log", value => value.text)).text, "<script>literal UTF-8 café 🍓</script>\n");
+    f.store.completeRun(run.id, { status: "succeeded", exit_code: 0 });
+    assert.equal((await next("snapshot", value => value.jobs[0].status === "succeeded")).jobs[0].status, "succeeded");
+    await f.post("/logout", {}, { Accept: "application/json" });
+    assert.match((await next("auth-expired")).error, /Session expired/);
+    assert.equal((await f.request("/api/jobs")).status, 401);
+  } finally { controller.abort(); await reader.cancel().catch(() => {}); }
 });

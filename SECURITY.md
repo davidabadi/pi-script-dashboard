@@ -26,6 +26,7 @@ Cloudflare Access is mandatory even though PAM remains enabled. A Tunnel without
 ## Security behavior
 
 - Sessions use secure, HTTP-only, same-site cookies; expire after 30 idle minutes; and have a 12-hour absolute lifetime.
+- `/api/events` requires the authenticated session and rejects cross-origin streams. The SPA keeps one active stream per browser view; connection counts and output buffering are bounded. Logout closes that session's streams, and open streams revalidate session expiry without renewing idle activity. Keepalive comments carry no application state.
 - All mutations require an authenticated session, same-origin request, and CSRF token.
 - Login attempts are limited per username and client IP.
 - Scripts, configs, logs, and locks are restricted to configured roots; traversal and symlink paths are rejected.
@@ -33,6 +34,8 @@ Cloudflare Access is mandatory even though PAM remains enabled. A Tunnel without
 - Security-relevant events are appended to `audit.jsonl`; credentials, tokens, session identifiers, and file contents are excluded.
 - Local hook credentials expire when their run finishes; requests require a unique event ID and are limited to 32 KiB. Retries are deduplicated. Do not print injected hook tokens in script output, audit events, or support reports.
 - Browser log text is escaped. Scripts can still emit secrets into logs; protect access and review outputs before sharing them.
+- Event streams expose the same public status/history/log fields as authenticated API reads. Per-run hook credentials stay private. A `Last-Event-ID` log byte cursor is scoped to the selected run; reconnects read current SQLite state and captured logs rather than trusting notification contents.
+- Cross-process change notifications use a private bounded signal file beside SQLite and filesystem watches on managed directories. The signal contains only a random wakeup token; it is not a registry, event journal, or backup requirement. SQLite and captured log files remain authoritative.
 
 Deployment, migration, full application backups, recovery, and acceptance checks are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
