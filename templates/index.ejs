@@ -13,166 +13,136 @@
   <script nonce="<%= cspNonce %>" src="/vendor/monaco/vs/loader.js"></script>
 </head>
 <body class="app-shell">
-  <% const statusMap = {
-    running: { label: 'Running', classes: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200', dot: 'bg-sky-500' },
-    success: { label: 'Success', classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200', dot: 'bg-emerald-500' },
-    partial: { label: 'Partial', classes: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200', dot: 'bg-amber-400 dark:bg-amber-300' },
-    failed: { label: 'Failed', classes: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200', dot: 'bg-rose-500' }
-  }; %>
-  <% const totalScripts = scriptOrder.length; %>
+  <% const statusLabels = { running: 'Running', success: 'Success', partial: 'Partial', failed: 'Failed' }; %>
   <% const runningCount = scriptOrder.filter(name => status[name] === 'running').length; %>
   <% const pausedCount = scriptOrder.filter(name => paused[name]).length; %>
-  <% const healthyCount = scriptOrder.filter(name => status[name] === 'success').length; %>
-
-  <div class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-    <header class="glass-panel rounded-[2rem] px-5 py-5 sm:px-7 lg:px-8">
-      <div class="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
-        <div class="max-w-3xl space-y-6">
-          <div class="flex flex-wrap items-center gap-3">
-            <span class="inline-flex items-center rounded-full border border-white/70 bg-white/70 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-slate-600 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-300">Automation Control Center</span>
-            <span class="inline-flex items-center gap-2 rounded-full border border-brand-200/70 bg-brand-50/80 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200">
-              <span class="status-dot bg-brand-500"></span>
-              Live orchestration
-            </span>
+  <div class="page-container">
+    <header class="app-header">
+      <a href="/" class="app-brand" aria-label="Pi Script Dashboard home">
+        <img src="/favicon.svg" alt="" class="app-logo" />
+        <span>Pi Script Dashboard</span>
+      </a>
+      <div class="header-actions">
+        <a href="/new" class="btn btn-primary">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New script
+        </a>
+        <details class="utility-menu">
+          <summary class="btn btn-ghost icon-button" aria-label="Dashboard options" title="Dashboard options">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
+          </summary>
+          <div class="menu-panel">
+            <button id="update-button" type="button" class="menu-item">Update dashboard</button>
+            <form method="POST" action="/logout">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <button type="submit" class="menu-item">Sign out</button>
+            </form>
           </div>
-
-          <div class="space-y-3">
-            <div class="flex items-center gap-4">
-              <img src="/favicon.svg" alt="" class="h-14 w-14 flex-none rounded-[1.4rem] shadow-lg shadow-brand-500/20" />
-              <div>
-                <p class="text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Pi Script Dashboard</p>
-                <h1 class="text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white sm:text-4xl">Run, review, and reshape your script fleet from one surface.</h1>
-              </div>
-            </div>
-            <p class="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">The dashboard keeps execution, scheduling, logs, and script maintenance in a single responsive workspace without changing the underlying automation flow.</p>
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-3 sm:flex-row xl:flex-col">
-          <a href="/new" class="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Create script</a>
-          <button id="update-button" type="button" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/75 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-brand-500/40 dark:hover:text-brand-200 motion-reduce:transition-none">Update dashboard</button>
-          <form method="POST" action="/logout"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><button type="submit" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-rose-200/80 bg-rose-50/80 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20 motion-reduce:transition-none">Logout</button></form>
-        </div>
+        </details>
       </div>
     </header>
 
     <% if (messages && messages.length) { %>
-      <div class="space-y-3" role="status">
+      <div class="mb-5 space-y-2" role="status">
         <% messages.forEach(msg => { %>
-          <div class="glass-panel rounded-2xl px-4 py-3 text-sm font-medium <%= msg.category === 'success' ? 'border-emerald-200/80 text-emerald-700 dark:border-emerald-500/30 dark:text-emerald-200' : 'border-rose-200/80 text-rose-700 dark:border-rose-500/30 dark:text-rose-200' %>"><%= msg.text %></div>
+          <div class="alert <%= msg.category === 'success' ? 'alert-success' : 'alert-error' %>"><%= msg.text %></div>
         <% }) %>
       </div>
     <% } %>
 
-    <section class="app-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Overview metrics">
-      <article class="metric-card rounded-[1.75rem] p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Total scripts</p>
-        <div class="mt-3 flex items-end justify-between gap-3">
-          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= totalScripts %></p>
-          <span class="text-sm text-slate-500 dark:text-slate-400">managed</span>
+    <main>
+      <section class="scripts-section" aria-labelledby="scripts-heading">
+        <div class="section-toolbar">
+          <div>
+            <h1 id="scripts-heading" class="page-title">Scripts</h1>
+            <div class="script-counts" aria-label="Script summary">
+              <span><strong><%= scriptOrder.length %></strong> <%= scriptOrder.length === 1 ? 'script' : 'scripts' %></span>
+              <span><i class="status-dot count-running" aria-hidden="true"></i><strong><%= runningCount %></strong> running</span>
+              <span><i class="status-dot count-paused" aria-hidden="true"></i><strong><%= pausedCount %></strong> paused</span>
+            </div>
+          </div>
+          <div class="flex flex-wrap justify-end gap-2">
+            <button id="reorder-button" type="button" class="btn btn-ghost" <%= scriptOrder.length < 2 ? 'hidden' : '' %>>
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v16m-3-3 3 3 3-3M16 20V4m-3 3 3-3 3 3" /></svg>
+              Reorder
+            </button>
+            <button id="save-order-button" type="button" hidden class="btn btn-primary">Save order</button>
+            <button id="cancel-order-button" type="button" hidden class="btn">Cancel</button>
+          </div>
         </div>
-      </article>
-      <article class="metric-card rounded-[1.75rem] p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Active now</p>
-        <div class="mt-3 flex items-end justify-between gap-3">
-          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= runningCount %></p>
-          <span class="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><span class="status-dot bg-sky-500"></span>running</span>
-        </div>
-      </article>
-      <article class="metric-card rounded-[1.75rem] p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Healthy runs</p>
-        <div class="mt-3 flex items-end justify-between gap-3">
-          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= healthyCount %></p>
-          <span class="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><span class="status-dot bg-emerald-500"></span>successful</span>
-        </div>
-      </article>
-      <article class="metric-card rounded-[1.75rem] p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Paused schedules</p>
-        <div class="mt-3 flex items-end justify-between gap-3">
-          <p class="text-4xl font-semibold tracking-[-0.06em] text-slate-950 dark:text-white"><%= pausedCount %></p>
-          <span class="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><span class="status-dot bg-amber-400 dark:bg-amber-300"></span>awaiting resume</span>
-        </div>
-      </article>
-    </section>
 
-    <section class="glass-panel rounded-[2rem] px-5 py-5 sm:px-6 lg:px-7" aria-labelledby="scripts-heading">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div class="max-w-2xl">
-          <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Inventory</p>
-          <h2 id="scripts-heading" class="mt-2 text-2xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white">Operational script inventory</h2>
-          <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Inspect status, trigger execution, open logs, update source, and switch into reorder mode when you want to adjust the presentation sequence.</p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <button id="reorder-button" type="button" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Reorder scripts</button>
-          <button id="save-order-button" type="button" hidden class="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Save order</button>
-          <button id="cancel-order-button" type="button" hidden class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">Cancel</button>
-        </div>
-      </div>
-
-      <div id="scripts-list" class="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-        <% scriptOrder.forEach(name => { %>
-          <% const state = status[name]; %>
-          <% const meta = state ? (statusMap[state] || statusMap.failed) : null; %>
-          <article class="group accent-ring flex flex-col gap-5 rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_24px_70px_rgba(15,23,42,0.14)] dark:border-slate-700/70 dark:bg-slate-900/72 dark:shadow-[0_24px_70px_rgba(2,6,23,0.4)] motion-reduce:transform-none motion-reduce:transition-none" data-name="<%= name %>">
-            <div class="flex items-start justify-between gap-4" data-drag-handle>
-              <div class="flex min-w-0 items-start gap-3">
-                <div class="mt-1 flex h-10 w-10 flex-none items-center justify-center rounded-2xl border border-slate-200/80 bg-white/90 text-slate-500 transition group-hover:border-brand-200 group-hover:text-brand-600 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-300 dark:group-hover:border-brand-500/30 dark:group-hover:text-brand-200">
-                  <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <circle cx="5" cy="5" r="1.5"></circle>
-                    <circle cx="5" cy="10" r="1.5"></circle>
-                    <circle cx="5" cy="15" r="1.5"></circle>
-                    <circle cx="10" cy="5" r="1.5"></circle>
-                    <circle cx="10" cy="10" r="1.5"></circle>
-                    <circle cx="10" cy="15" r="1.5"></circle>
-                  </svg>
+        <div class="panel">
+          <% if (scriptOrder.length) { %>
+            <div class="script-columns" aria-hidden="true">
+              <span>Script</span><span>Last run</span><span>Schedule</span><span class="text-right">Actions</span>
+            </div>
+          <% } %>
+          <div id="scripts-list">
+            <% scriptOrder.forEach(name => { %>
+              <% const state = status[name]; %>
+              <% const displayState = state ? (statusLabels[state] ? state : 'failed') : ''; %>
+              <article class="script-row" data-name="<%= name %>" aria-label="<%= name %>">
+                <div class="script-identity">
+                  <div class="drag-controls">
+                    <span class="drag-handle" data-drag-handle aria-hidden="true">
+                      <svg class="icon" viewBox="0 0 24 24"><path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01" stroke-width="3" /></svg>
+                    </span>
+                    <div>
+                      <button type="button" class="move-button" data-move="up" aria-label="Move <%= name %> up"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 14 5-5 5 5" /></svg></button>
+                      <button type="button" class="move-button" data-move="down" aria-label="Move <%= name %> down"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg></button>
+                    </div>
+                  </div>
+                  <div class="min-w-0">
+                    <h2 class="script-name"><%= name %></h2>
+                    <div class="script-meta">
+                      <span class="status-badge" data-state="<%= displayState %>">
+                        <span class="status-dot" aria-hidden="true"></span>
+                        <%= displayState ? statusLabels[displayState] : 'Not run' %>
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div class="min-w-0">
-                  <p class="truncate text-lg font-semibold tracking-[-0.03em] text-slate-950 dark:text-white"><%= name %></p>
-                  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Last run: <span class="font-medium text-slate-700 dark:text-slate-200"><%= state === 'running' ? 'In progress' : (last_run[name] || 'Never') %></span></p>
+                <p class="script-last-run"><span class="mobile-label">Last run: </span><%= state === 'running' ? 'In progress' : (last_run[name] || 'Never') %></p>
+                <form method="POST" action="/toggle_cron/<%= encodeURIComponent(name) %>" class="schedule-control">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                  <span class="schedule-state <%= paused[name] ? 'is-paused' : '' %>"><%= paused[name] ? 'Paused' : 'Active' %></span>
+                  <button type="submit" class="schedule-button" aria-label="<%= paused[name] ? 'Resume' : 'Pause' %> cron for <%= name %>"><%= paused[name] ? 'Resume' : 'Pause' %></button>
+                </form>
+                <div class="script-actions">
+                  <form method="POST" action="/run/<%= encodeURIComponent(name) %>">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <button type="submit" class="btn btn-run" aria-label="Run <%= name %>">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7V5Z" /></svg>Run
+                    </button>
+                  </form>
+                  <a href="/edit/<%= encodeURIComponent(name) %>" class="btn btn-ghost" aria-label="Edit <%= name %>">Edit</a>
+                  <a href="/log/<%= encodeURIComponent(name) %>" class="btn btn-ghost" aria-label="View log for <%= name %>">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 6 5 5-5 5M13 18h6" /></svg>Log
+                  </a>
                 </div>
-              </div>
-              <% if (meta) { %>
-                <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold <%= meta.classes %>">
-                  <span class="status-dot <%= meta.dot %>"></span>
-                  <%= meta.label %>
-                </span>
-              <% } %>
+              </article>
+            <% }) %>
+          </div>
+          <% if (!scriptOrder.length) { %>
+            <div class="empty-state">
+              <p>No scripts yet.</p>
+              <a href="/new" class="btn btn-primary">New script</a>
             </div>
-
-            <div class="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-              <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 dark:border-slate-700 dark:bg-slate-950/60">Direct execution</span>
-              <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 dark:border-slate-700 dark:bg-slate-950/60">Live log review</span>
-              <% if (paused[name]) { %>
-                <span class="rounded-full border border-amber-200/80 bg-amber-100/80 px-3 py-1 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">Cron paused</span>
-              <% } %>
-            </div>
-
-            <div class="grid gap-3 sm:grid-cols-2">
-              <form method="POST" action="/run/<%= encodeURIComponent(name) %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><button type="submit" class="w-full inline-flex cursor-pointer items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#18181b_0%,#ec4899_100%)] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 motion-reduce:transition-none">Run now</button></form>
-              <a href="/edit/<%= encodeURIComponent(name) %>" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-brand-500/30 dark:hover:text-brand-200 motion-reduce:transition-none">Edit script</a>
-              <a href="/log/<%= encodeURIComponent(name) %>" class="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none">View log</a>
-              <form method="POST" action="/toggle_cron/<%= encodeURIComponent(name) %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><button type="submit" class="w-full inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white motion-reduce:transition-none"><%= paused[name] ? 'Resume cron' : 'Pause cron' %></button></form>
-            </div>
-          </article>
-        <% }) %>
-      </div>
-    </section>
-
-    <details class="glass-panel group rounded-[2rem] px-5 py-5 sm:px-6 lg:px-7">
-      <summary class="flex cursor-pointer flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Schedule reference</p>
-          <p class="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-white">Cron schedule overview</p>
+          <% } %>
         </div>
-        <div class="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-          <span>Inspect the current crontab snapshot</span>
-          <svg class="h-5 w-5 flex-none text-slate-400 transition duration-200 group-open:rotate-180 dark:text-slate-500 motion-reduce:transition-none" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.192l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.24 4.53a.75.75 0 0 1-1.08 0l-4.24-4.53a.75.75 0 0 1 .02-1.06z" clip-rule="evenodd" />
-          </svg>
-        </div>
-      </summary>
-      <div id="cron-editor" class="editor-frame mt-5 h-80 rounded-[1.5rem]"></div>
-    </details>
+        <p id="reorder-note" class="reorder-note" hidden>Drag to reorder, or use the arrow buttons.</p>
+        <p id="order-status" class="sr-only" role="status"></p>
+      </section>
+
+      <details class="panel cron-panel">
+        <summary>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg>
+          Crontab
+          <svg class="icon chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
+        </summary>
+        <div id="cron-editor" class="editor-frame" aria-label="Current crontab, read only"></div>
+      </details>
+    </main>
   </div>
 
   <script nonce="<%= cspNonce %>">
@@ -274,13 +244,14 @@
         let originalOrder = getOrder();
         const setReorderMode = (enabled) => {
           if (!reorderButton || !saveOrderButton || !cancelOrderButton) return;
-          reorderButton.hidden = enabled;
+          reorderButton.hidden = enabled || list.children.length < 2;
           saveOrderButton.hidden = !enabled;
           cancelOrderButton.hidden = !enabled;
-          list.classList.toggle('ring-2', enabled);
-          list.classList.toggle('ring-brand-300', enabled);
-          list.classList.toggle('rounded-[1.75rem]', enabled);
-          list.classList.toggle('p-2', enabled);
+          list.classList.toggle('is-reordering', enabled);
+          const note = document.getElementById('reorder-note');
+          note.hidden = !enabled;
+          note.textContent = 'Drag to reorder, or use the arrow buttons.';
+          note.removeAttribute('role');
         };
         const sortable = Sortable.create(list, {
           animation: 200,
@@ -290,6 +261,18 @@
           onEnd: (evt) => {
             evt.item.classList.remove('opacity-60');
           }
+        });
+
+        list.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-move]');
+          if (!button || !list.classList.contains('is-reordering')) return;
+          const row = button.closest('[data-name]');
+          const adjacent = button.dataset.move === 'up' ? row.previousElementSibling : row.nextElementSibling;
+          if (!adjacent) return;
+          if (button.dataset.move === 'up') list.insertBefore(row, adjacent);
+          else list.insertBefore(adjacent, row);
+          button.focus();
+          document.getElementById('order-status').textContent = `${row.dataset.name} moved ${button.dataset.move}.`;
         });
 
         if (reorderButton && saveOrderButton && cancelOrderButton) {
@@ -311,19 +294,36 @@
             sortable.option('disabled', true);
             setReorderMode(false);
             try {
-              await fetch('/reorder', {
+              const response = await fetch('/reorder', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                 body: JSON.stringify({ order })
               });
+              if (!response.ok) throw new Error('Order request failed');
+              document.getElementById('order-status').textContent = 'Script order saved.';
             } catch (error) {
               console.error('Failed to persist script order', error);
+              sortable.option('disabled', false);
+              setReorderMode(true);
+              const note = document.getElementById('reorder-note');
+              note.textContent = 'Could not save the order. Try again.';
+              note.setAttribute('role', 'alert');
             }
           });
         }
       }
     });
     document.getElementById('update-button')?.addEventListener('click', runUpdate);
+    const utilityMenu = document.querySelector('.utility-menu');
+    document.addEventListener('click', (event) => {
+      if (!utilityMenu.contains(event.target)) utilityMenu.open = false;
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && utilityMenu.open) {
+        utilityMenu.open = false;
+        utilityMenu.querySelector('summary').focus();
+      }
+    });
   </script>
 </body>
 </html>
