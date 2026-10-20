@@ -21,7 +21,7 @@ expired_user=pi-dashboard-it-expired
 pam_profile=/etc/pam.d/pi-script-dashboard
 fixture_users=("$service_user" "$admin_user" "$other_user" "$expired_user")
 
-for command in node python3 getent groupadd useradd chpasswd chage runuser crontab; do
+for command in node python3 getent groupadd useradd chpasswd chage runuser crontab setpriv; do
   command -v "$command" >/dev/null || fail "missing prerequisite: $command"
 done
 [[ -x /usr/sbin/saslauthd ]] || fail 'install sasl2-bin before running the fixture'
@@ -187,6 +187,26 @@ printf '%s\n' "$service_cron" | runuser -u "$service_user" -- crontab -
 [[ "$(runuser -u "$service_user" -- crontab -l)" == "$service_cron" ]] || fail 'service-user cron resume failed'
 [[ "$(crontab -u root -l)" == "$root_cron_before" ]] || fail 'service-user operations changed root crontab'
 printf 'PASS: service-user cron install/pause/resume preserves root crontab\n'
+
+# The updater's systemd sandbox implies NoNewPrivileges. Its cron subprocesses
+# need an explicit supplementary group because the packaged setgid transition
+# cannot grant spool access under NNP. Do not add that group to the account.
+[[ " $(id -nG "$service_user") " != *' crontab '* ]] || fail 'service account unexpectedly has global crontab membership'
+if setpriv --no-new-privs runuser -u "$service_user" -g pi-dashboard -- crontab -l >/dev/null 2>&1; then
+  fail 'NNP crontab unexpectedly has spool access without the explicit group'
+fi
+nnp_service_cron="# $service_cron"
+printf '%s\n' "$nnp_service_cron" | setpriv --no-new-privs \
+  runuser -u "$service_user" -g pi-dashboard -G crontab -- crontab -
+[[ "$(setpriv --no-new-privs runuser -u "$service_user" -g pi-dashboard -G crontab -- crontab -l)" == "$nnp_service_cron" ]] || fail 'NNP explicit-group cron roundtrip failed'
+if setpriv --no-new-privs runuser -u "$service_user" -g pi-dashboard -G crontab -- crontab -u root -l >/dev/null 2>&1; then
+  fail 'NNP explicit-group service user can inspect root crontab'
+fi
+printf '%s\n' "$service_cron" | setpriv --no-new-privs \
+  runuser -u "$service_user" -g pi-dashboard -G crontab -- crontab -
+[[ "$(crontab -u root -l)" == "$root_cron_before" ]] || fail 'NNP explicit-group operations changed root crontab'
+[[ " $(id -nG "$service_user") " != *' crontab '* ]] || fail 'NNP fixture changed global group membership'
+printf 'PASS: NNP updater cron operations work with a subprocess-only group and preserve root cron\n'
 
 # A changed PID file must never turn cleanup into a signal to another process.
 expected_daemon_pid="$daemon_pid"

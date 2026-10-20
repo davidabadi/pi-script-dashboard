@@ -4,3 +4,4 @@
 # Deployment artifacts execute on Linux and must retain Unix line endings.
 deploy/* text eol=lf
 test/*.sh text eol=lf
+bin/*.js text eol=lf

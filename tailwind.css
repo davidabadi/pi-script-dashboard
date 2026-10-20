@@ -129,10 +129,16 @@
   .script-name { overflow-wrap: anywhere; font-size: 14px; font-weight: 550; line-height: 1.5; letter-spacing: -.015em; }
   .script-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
   .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; border-radius: 5px; color: var(--muted); background: var(--surface-muted); font-size: 10px; line-height: 17px; font-weight: 500; }
-  .status-badge[data-state="success"] { color: var(--success); background: var(--success-soft); }
+  .status-badge[data-state="success"], .status-badge[data-state="succeeded"] { color: var(--success); background: var(--success-soft); }
   .status-badge[data-state="running"] { color: var(--info); background: var(--info-soft); }
   .status-badge[data-state="partial"] { color: var(--warning); background: var(--warning-soft); }
   .status-badge[data-state="failed"] { color: var(--danger); background: var(--danger-soft); }
+  .status-badge[data-state="queued"] { color: var(--info); background: var(--info-soft); }
+  .status-badge[data-state="interrupted"], .status-badge[data-state="skipped"] { color: var(--warning); background: var(--warning-soft); }
+  .run-history { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .run-history th, .run-history td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .run-history tr[aria-selected="true"] { background: var(--surface-muted); }
+  .history-scroll { overflow-x: auto; max-height: 300px; }
   .script-last-run { color: var(--muted); font-size: 12px; line-height: 1.65; font-variant-numeric: tabular-nums; }
   .mobile-label { display: none; }
   .schedule-control { display: flex; align-items: center; gap: 9px; font-size: 12px; }

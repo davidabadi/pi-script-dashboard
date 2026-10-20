@@ -13,7 +13,7 @@
   <script nonce="<%= cspNonce %>" src="/vendor/monaco/vs/loader.js"></script>
 </head>
 <body class="app-shell">
-  <% const statusLabels = { running: 'Running', success: 'Success', partial: 'Partial', failed: 'Failed' }; %>
+  <% const statusLabels = { queued: 'Queued', running: 'Running', succeeded: 'Succeeded', partial: 'Partial', failed: 'Failed', interrupted: 'Interrupted', skipped: 'Skipped' }; %>
   <% const runningCount = scriptOrder.filter(name => status[name] === 'running').length; %>
   <% const pausedCount = scriptOrder.filter(name => paused[name]).length; %>
   <div class="page-container">
@@ -57,7 +57,7 @@
             <h1 id="scripts-heading" class="page-title">Scripts</h1>
             <div class="script-counts" aria-label="Script summary">
               <span><strong><%= scriptOrder.length %></strong> <%= scriptOrder.length === 1 ? 'script' : 'scripts' %></span>
-              <span><i class="status-dot count-running" aria-hidden="true"></i><strong><%= runningCount %></strong> running</span>
+              <span><i class="status-dot count-running" aria-hidden="true"></i><strong id="running-count"><%= runningCount %></strong> running</span>
               <span><i class="status-dot count-paused" aria-hidden="true"></i><strong><%= pausedCount %></strong> paused</span>
             </div>
           </div>
@@ -71,6 +71,19 @@
           </div>
         </div>
 
+        <p id="live-connection" class="reorder-note" role="status"><%= worker.online ? (worker.draining ? 'Finishing active jobs before an update.' : 'Live updates connected.') : 'Execution service is offline. Queued jobs will wait.' %></p>
+        <div id="schedule-warning" class="alert alert-error mb-4" <%= schedulerPending ? '' : 'hidden' %>>
+          <p>Schedules need synchronization. Execution is paused.</p>
+          <form id="schedule-sync-form" method="POST" action="/sync-cron" class="mt-2" <%= contentRecovery ? 'hidden' : '' %>>
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <button type="submit" class="btn">Retry schedule sync</button>
+          </form>
+          <form id="edit-recovery-form" method="POST" action="/recover-edit" class="mt-2" <%= contentRecovery ? '' : 'hidden' %>>
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <p>A file edit was interrupted. Restore its original files before synchronizing.</p>
+            <button type="submit" class="btn">Recover interrupted edit</button>
+          </form>
+        </div>
         <div class="panel">
           <% if (scriptOrder.length) { %>
             <div class="script-columns" aria-hidden="true">
@@ -78,10 +91,10 @@
             </div>
           <% } %>
           <div id="scripts-list">
-            <% scriptOrder.forEach(name => { %>
+            <% scriptOrder.forEach((name, index) => { %>
               <% const state = status[name]; %>
               <% const displayState = state ? (statusLabels[state] ? state : 'failed') : ''; %>
-              <article class="script-row" data-name="<%= name %>" aria-label="<%= name %>">
+              <article class="script-row" data-name="<%= name %>" data-job-id="<%= jobs[index].id %>" aria-label="<%= name %>">
                 <div class="script-identity">
                   <div class="drag-controls">
                     <span class="drag-handle" data-drag-handle aria-hidden="true">
@@ -97,12 +110,12 @@
                     <div class="script-meta">
                       <span class="status-badge" data-state="<%= displayState %>">
                         <span class="status-dot" aria-hidden="true"></span>
-                        <%= displayState ? statusLabels[displayState] : 'Not run' %>
+                        <span data-status-label><%= displayState ? statusLabels[displayState] : 'Not run' %></span>
                       </span>
                     </div>
                   </div>
                 </div>
-                <p class="script-last-run"><span class="mobile-label">Last run: </span><%= state === 'running' ? 'In progress' : (last_run[name] || 'Never') %></p>
+                <div class="script-last-run"><p data-last-run><%= state === 'running' ? 'In progress' : (last_run[name] || 'Never') %></p><p data-progress class="text-xs break-words"><%= jobs[index].message %></p></div>
                 <form method="POST" action="/toggle_cron/<%= encodeURIComponent(name) %>" class="schedule-control">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                   <span class="schedule-state <%= paused[name] ? 'is-paused' : '' %>"><%= paused[name] ? 'Paused' : 'Active' %></span>
@@ -111,13 +124,13 @@
                 <div class="script-actions">
                   <form method="POST" action="/run/<%= encodeURIComponent(name) %>">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-                    <button type="submit" class="btn btn-run" aria-label="Run <%= name %>">
+                    <button type="submit" data-run-button class="btn btn-run" aria-label="Run <%= name %>" <%= ['queued', 'running'].includes(state) ? 'disabled' : '' %>>
                       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7V5Z" /></svg>Run
                     </button>
                   </form>
                   <a href="/edit/<%= encodeURIComponent(name) %>" class="btn btn-ghost" aria-label="Edit <%= name %>">Edit</a>
                   <a href="/log/<%= encodeURIComponent(name) %>" class="btn btn-ghost" aria-label="View log for <%= name %>">
-                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 6 5 5-5 5M13 18h6" /></svg>Log
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 6 5 5-5 5M13 18h6" /></svg>History &amp; logs
                   </a>
                 </div>
               </article>
@@ -147,6 +160,40 @@
 
   <script nonce="<%= cspNonce %>">
     const csrfToken = <%- safeJson(csrfToken) %>;
+    const statusLabels = <%- safeJson(statusLabels) %>;
+    const connection = document.getElementById('live-connection');
+    let sessionExpired = false;
+    async function refreshJobs() {
+      try {
+        const response = await fetch('/api/jobs', { cache: 'no-store' });
+        if (response.status === 401) {
+          sessionExpired = true;
+          connection.replaceChildren(document.createTextNode('Session expired. '));
+          const link = document.createElement('a'); link.href = '/login'; link.textContent = 'Sign in again'; connection.appendChild(link);
+          return;
+        }
+        if (!response.ok) throw new Error('Refresh failed');
+        const data = await response.json();
+        document.getElementById('schedule-warning').hidden = !data.schedulerPending;
+        document.getElementById('edit-recovery-form').hidden = !data.contentRecovery;
+        document.getElementById('schedule-sync-form').hidden = data.contentRecovery;
+        document.getElementById('running-count').textContent = data.jobs.filter(job => job.status === 'running').length;
+        let changed = data.jobs.length !== document.querySelectorAll('[data-job-id]').length;
+        for (const job of data.jobs) {
+          const row = document.querySelector(`[data-job-id="${CSS.escape(job.id)}"]`);
+          if (!row || row.dataset.name !== job.name) { changed = true; continue; }
+          row.querySelector('.status-badge').dataset.state = job.status || '';
+          row.querySelector('[data-status-label]').textContent = statusLabels[job.status] || 'Not run';
+          row.querySelector('[data-last-run]').textContent = job.status === 'running' ? 'In progress' : (job.last_run ? new Date(job.last_run).toLocaleString() : 'Never');
+          row.querySelector('[data-progress]').textContent = job.message || '';
+          row.querySelector('[data-run-button]').disabled = data.schedulerPending || ['queued', 'running'].includes(job.status);
+        }
+        connection.textContent = changed ? 'The script list changed. Reload to see the latest list.' : (!data.worker.online ? 'Execution service is offline. Queued jobs will wait.' : data.worker.draining ? 'Finishing active jobs before an update.' : 'Live updates connected.');
+      } catch {
+        connection.textContent = 'Connection lost. Reconnecting…';
+      } finally { if (!sessionExpired) setTimeout(refreshJobs, 2000); }
+    }
+    setTimeout(refreshJobs, 2000);
     async function runUpdate() {
       const button = document.getElementById('update-button');
       button.disabled = true;
@@ -174,16 +221,29 @@
       const checkStatus = async () => {
         try {
           const res = await fetch('/update-status');
+          if (res.status === 401) {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            button.textContent = 'Sign in to check update';
+            button.onclick = () => { window.location.href = '/login'; };
+            return true;
+          }
           if (!res.ok) throw new Error('Status request failed');
           const data = await res.json();
-          if (!data.updating) {
+          if (data.status === 'failed') {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            button.textContent = 'Update failed';
+            connection.textContent = data.message || 'Update failed. Check deployment service logs.';
+            return true;
+          }
+          if (['waiting', 'draining'].includes(data.status)) button.textContent = 'Waiting for jobs…';
+          if (data.status === 'succeeded') {
             finish();
             return true;
           }
         } catch (error) {
-          console.error('Update status check failed', error);
-          finish();
-          return true;
+          connection.textContent = 'Reconnecting while the dashboard updates…';
         }
         return false;
       };

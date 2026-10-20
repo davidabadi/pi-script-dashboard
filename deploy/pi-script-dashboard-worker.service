@@ -1,0 +1,41 @@
+[Unit]
+Description=Pi Script Dashboard job worker and local reporting hooks
+After=network-online.target
+Wants=network-online.target
+# Independent of the web service: website restarts must not stop jobs or hooks.
+
+[Service]
+Type=simple
+User=pi-dashboard
+Group=pi-dashboard
+NoNewPrivileges=true
+WorkingDirectory=/opt/pi-script-dashboard
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/pi-script-dashboard/environment
+ExecStart=/usr/local/bin/node /opt/pi-script-dashboard/worker.js
+Restart=on-failure
+RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=30s
+UMask=0077
+StateDirectory=pi-script-dashboard
+StateDirectoryMode=0700
+LogsDirectory=pi-script-dashboard
+LogsDirectoryMode=0700
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/pi-script-dashboard /var/log/pi-script-dashboard /run/pi-script-dashboard
+
+[Install]
+WantedBy=multi-user.target

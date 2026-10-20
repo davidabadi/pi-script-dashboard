@@ -22,7 +22,7 @@ StateDirectory=pi-script-dashboard
 StateDirectoryMode=0700
 LogsDirectory=pi-script-dashboard
 LogsDirectoryMode=0700
-# /run/pi-script-dashboard is created by tmpfiles and also used by cron jobs.
+# /run/pi-script-dashboard is created by tmpfiles and shared with the worker.
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict

@@ -2,13 +2,62 @@
 set -eu
 
 request=/var/lib/pi-script-dashboard/update.request
-lock=/run/pi-script-dashboard/dashboard-update.lock
 repo=/opt/pi-script-dashboard
+db=/var/lib/pi-script-dashboard/dashboard.sqlite
+lockdir=/run/pi-script-dashboard-update
+stopped=0
+complete=0
 
-test -f "$request"
-install -o pi-dashboard -g pi-dashboard -m 0600 /dev/null "$lock"
-trap 'rm -f "$lock" "$request"' EXIT
+test -f "$request" || exit 0
+# This directory and its lock are root-owned, outside application-writable
+# runtime paths. flock coordinates actual processes; file existence is no lock.
+install -d -o root -g root -m 0700 "$lockdir"
+umask 077
+exec 9>"$lockdir/update.lock"
+flock -n 9 || exit 0
 
+control() {
+  runuser -u pi-dashboard -- /usr/local/bin/node "$repo/bin/control.js" --db "$db" "$@"
+}
+cleanup() {
+  result=$?
+  trap - EXIT HUP INT TERM
+  if [ "$complete" -ne 1 ]; then
+    # Retain drain on failure: an operator must review the failed update before
+    # queued jobs use a possibly partially updated checkout.
+    control update failed 'Update failed; worker remains drained. Inspect the update journal, repair or roll back, then resume.' || true
+    if [ "$stopped" -eq 1 ]; then
+      systemctl start pi-script-dashboard-worker.service pi-script-dashboard.service || true
+    fi
+  fi
+  rm -f -- "$request"
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+control update waiting 'Waiting for active jobs to finish; queued jobs are retained.'
+control drain
+control --timeout 900 wait-idle
+# Never change executable files/dependencies while an old worker has children.
+stopped=1
+systemctl stop pi-script-dashboard.service pi-script-dashboard-worker.service
+control update updating 'Worker drained. Backing up state and installing the reviewed release.'
+backup_dir="/var/lib/pi-script-dashboard/backups/update-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+# The updater sandbox prevents setgid privilege gain. Grant the cron helper's
+# spool group to only these subprocesses, without changing global memberships.
+runuser -u pi-dashboard -g pi-dashboard -G crontab -- /usr/local/bin/node "$repo/bin/backup.js" --db "$db" --output "$backup_dir"
+checkout_status=$(runuser -u pi-dashboard -- git -C "$repo" status --porcelain)
+if [ -n "$checkout_status" ]; then
+  echo 'Update refused: checkout has local changes. Review and preserve them before retrying.' >&2
+  exit 1
+fi
 runuser -u pi-dashboard -- git -C "$repo" pull --ff-only
-runuser -u pi-dashboard -- /usr/local/bin/npm --prefix "$repo" ci --omit=dev
-systemctl restart pi-script-dashboard.service
+runuser -u pi-dashboard -- /usr/local/bin/npm --prefix "$repo" ci --omit=dev --ignore-scripts
+runuser -u pi-dashboard -g pi-dashboard -G crontab -- /usr/local/bin/node "$repo/bin/migrate.js" --db "$db" --sync-only
+systemctl start pi-script-dashboard-worker.service pi-script-dashboard.service
+systemctl is-active --quiet pi-script-dashboard-worker.service pi-script-dashboard.service
+control --timeout 30 wait-idle
+control update succeeded 'Update installed. Worker resumed; queued jobs are retained.'
+control resume
+complete=1

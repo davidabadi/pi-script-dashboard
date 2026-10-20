@@ -4,11 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <title>Log - <%= name %></title>
-  <link rel="icon" type="image/png" href="/favicon-96x96.png?v=<%= cacheBust %>" sizes="96x96" />
+  <title>Runs - <%= name %></title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= cacheBust %>" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=<%= cacheBust %>" />
-  <link rel="manifest" href="/site.webmanifest?v=<%= cacheBust %>" crossorigin="use-credentials" />
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script nonce="<%= cspNonce %>" src="/vendor/monaco/vs/loader.js"></script>
 </head>
@@ -17,40 +14,153 @@
     <header class="app-header mb-6">
       <div class="app-brand min-w-0">
         <img src="/favicon.svg?v=<%= cacheBust %>" alt="" class="app-logo" />
-        <div class="min-w-0">
-          <h1 class="page-title break-words"><%= name %></h1>
-          <p class="page-subtitle">Log &middot; Last 100 lines &middot; Read only</p>
-        </div>
+        <div class="min-w-0"><h1 class="page-title break-words"><%= name %></h1><p class="page-subtitle">Run history &amp; live logs · <%= retentionDays %> days retained</p></div>
       </div>
       <a href="/" class="btn btn-ghost flex-none">Back to scripts</a>
     </header>
+    <section class="panel mb-4" aria-label="Run history">
+      <div class="history-scroll">
+        <table class="run-history">
+          <thead><tr><th>Outcome</th><th>Started</th><th>Duration</th><th>Source</th><th>Exit</th><th>Log</th></tr></thead>
+          <tbody id="runs"></tbody>
+        </table>
+      </div>
+      <p id="empty-history" class="p-4" hidden>No runs recorded yet. New executions will appear here.</p>
+      <div class="p-3"><button id="older-runs" type="button" class="btn btn-ghost" hidden>Load older runs</button></div>
+    </section>
     <section class="panel p-3 sm:p-4" aria-label="Log output">
-      <div class="editor-frame h-[70vh]" id="editor"></div>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <p id="selected-run" class="text-sm">Select a run to view its log.</p>
+        <div class="flex items-center gap-3">
+          <label class="text-xs"><input id="follow-tail" type="checkbox" checked /> Follow output</label>
+          <% if (originalLog) { %><a href="/legacy-log/<%= encodeURIComponent(name) %>" class="btn btn-ghost">Original script log</a><% } %>
+        </div>
+      </div>
+      <p id="log-notice" class="text-xs mb-3" role="status"></p>
+      <div class="editor-frame h-[60vh]" id="editor"></div>
+      <p id="connection" class="reorder-note" role="status">Connecting…</p>
     </section>
   </main>
-
   <script nonce="<%= cspNonce %>">
+    const jobId = <%- safeJson(jobId) %>;
+    let initialRuns = <%- safeJson(runs) %>;
+    const labels = { queued: 'Queued', running: 'Running', succeeded: 'Succeeded', failed: 'Failed', partial: 'Partial', interrupted: 'Interrupted', skipped: 'Skipped' };
     require.config({ paths: { vs: '/vendor/monaco/vs' } });
     require(['vs/editor/editor.main'], function () {
-      const mql = window.matchMedia('(prefers-color-scheme: dark)');
-      const currentTheme = () => (mql.matches ? 'vs-dark' : 'vs');
-      monaco.editor.create(document.getElementById('editor'), {
-        value: <%- safeJson(content.join('\n')) %>,
-        language: 'shell',
-        readOnly: true,
-        automaticLayout: true,
-        theme: currentTheme(),
-        minimap: { enabled: false },
-        fontFamily: "'Fira Code', 'Cascadia Code', 'Source Code Pro', 'Menlo', monospace"
+      const dark = window.matchMedia('(prefers-color-scheme: dark)');
+      const editor = monaco.editor.create(document.getElementById('editor'), {
+        value: '', language: 'plaintext', readOnly: true, automaticLayout: true,
+        theme: dark.matches ? 'vs-dark' : 'vs', minimap: { enabled: false }, wordWrap: 'on',
+        fontFamily: "'Cascadia Code', 'Menlo', monospace"
       });
-
-      const applyTheme = () => monaco.editor.setTheme(currentTheme());
-      applyTheme();
-      if (mql.addEventListener) {
-        mql.addEventListener('change', applyTheme);
-      } else if (mql.addListener) {
-        mql.addListener(applyTheme);
+      dark.addEventListener('change', () => monaco.editor.setTheme(dark.matches ? 'vs-dark' : 'vs'));
+      const connection = document.getElementById('connection');
+      const follow = document.getElementById('follow-tail');
+      let selectedId = null, offset = 0, text = '', loading = false, expired = false, selectedComplete = false;
+      let known = new Map(initialRuns.map(run => [run.id, run]));
+      let order = initialRuns.map(run => run.id), oldestCursor = order.at(-1), hasOlder = initialRuns.length === 50;
+      let loadedOlder = false;
+      async function request(url) {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (response.status === 401) {
+          expired = true;
+          connection.replaceChildren(document.createTextNode('Session expired. '));
+          const link = document.createElement('a'); link.href = '/login'; link.textContent = 'Sign in again'; connection.append(link);
+          throw new Error('Authentication required');
+        }
+        if (!response.ok) throw new Error(response.status === 404 ? 'Run history expired or unavailable.' : 'Connection lost. Reconnecting…');
+        return response.json();
       }
+      const timestamp = run => run.started_at || run.queued_at;
+      function duration(run) {
+        if (!run.started_at) return '—';
+        const seconds = Math.max(0, Math.floor(((run.finished_at ? Date.parse(run.finished_at) : Date.now()) - Date.parse(run.started_at)) / 1000));
+        return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+      }
+      function renderHistory() {
+        const body = document.getElementById('runs');
+        const focused = body.contains(document.activeElement) ? document.activeElement.dataset.runId : null;
+        body.replaceChildren();
+        for (const id of order) {
+          const run = known.get(id);
+          const row = document.createElement('tr'); row.setAttribute('aria-selected', String(id === selectedId));
+          const state = document.createElement('td');
+          const badge = document.createElement('span'); badge.className = 'status-badge'; badge.dataset.state = run.status; badge.textContent = labels[run.status] || run.status; state.append(badge); row.append(state);
+          for (const value of [new Date(timestamp(run)).toLocaleString(), duration(run), run.source, run.exit_code ?? '—']) {
+            const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+          }
+          const action = document.createElement('td');
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'btn btn-ghost'; button.textContent = id === selectedId ? 'Viewing' : 'View log';
+          button.dataset.runId = id;
+          button.setAttribute('aria-label', `View ${labels[run.status]} run from ${new Date(timestamp(run)).toLocaleString()}`);
+          button.addEventListener('click', () => selectRun(id)); action.append(button); row.append(action); body.append(row);
+        }
+        document.getElementById('empty-history').hidden = order.length > 0;
+        document.getElementById('older-runs').hidden = !hasOlder;
+        if (focused) body.querySelector(`[data-run-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+      }
+      function selectRun(id) {
+        if (id === selectedId) return;
+        selectedId = id; offset = 0; text = ''; selectedComplete = false;
+        editor.setValue(''); document.getElementById('log-notice').textContent = '';
+        const run = known.get(id);
+        document.getElementById('selected-run').textContent = `${labels[run.status]} · ${new Date(timestamp(run)).toLocaleString()}`;
+        renderHistory();
+        refreshLog();
+      }
+      async function refreshLog() {
+        if (!selectedId || loading || selectedComplete || expired) return;
+        loading = true;
+        const id = selectedId;
+        try {
+          const data = await request(`/api/runs/${encodeURIComponent(id)}/log?offset=${offset}`);
+          if (id !== selectedId) return;
+          offset = data.nextOffset;
+          known.set(id, data.run);
+          if (data.text) {
+            const scroll = editor.getScrollTop();
+            text = (text + data.text).slice(-262144);
+            editor.setValue(text);
+            if (follow.checked) editor.revealLine(editor.getModel().getLineCount());
+            else editor.setScrollTop(scroll);
+          }
+          document.getElementById('selected-run').textContent = `${labels[data.run.status]} · ${new Date(timestamp(data.run)).toLocaleString()}${data.run.message ? ' · ' + data.run.message : ''}`;
+          const notes = [];
+          if (data.truncated) notes.push('Capture reached its configured size limit. The job continued.');
+          if (data.captureGap) notes.push('The script log was reset or replaced; some output may be missing.');
+          if (offset > 262144) notes.push('Showing the latest 256 KiB of captured output.');
+          document.getElementById('log-notice').textContent = notes.join(' ');
+          selectedComplete = data.complete && !data.text;
+          connection.textContent = 'Live updates connected.';
+          renderHistory();
+          if (data.text) setTimeout(refreshLog, 0);
+        } catch (error) { if (!expired) connection.textContent = error.message; }
+        finally { loading = false; }
+      }
+      async function poll() {
+        try {
+          const data = await request(`/api/jobs/${encodeURIComponent(jobId)}/runs`);
+          const freshIds = data.runs.map(run => run.id);
+          for (const run of data.runs) known.set(run.id, run);
+          order = loadedOlder ? [...freshIds, ...order.filter(id => !freshIds.includes(id))] : freshIds;
+          if (!loadedOlder) { hasOlder = data.runs.length === 50; oldestCursor = order.at(-1); }
+          if (!selectedId && order.length) selectRun(order[0]);
+          renderHistory(); await refreshLog();
+          if (!selectedId) connection.textContent = 'Live updates connected.';
+        } catch (error) { if (!expired) connection.textContent = error.message; }
+        finally { if (!expired) setTimeout(poll, 2000); }
+      }
+      document.getElementById('older-runs').addEventListener('click', async (event) => {
+        const button = event.currentTarget; button.disabled = true;
+        try {
+          const data = await request(`/api/jobs/${encodeURIComponent(jobId)}/runs?before=${encodeURIComponent(oldestCursor)}`);
+          for (const run of data.runs) { known.set(run.id, run); if (!order.includes(run.id)) order.push(run.id); }
+          oldestCursor = data.runs.at(-1)?.id || oldestCursor; hasOlder = data.runs.length === 50; loadedOlder = true; renderHistory();
+        } catch (error) { if (!expired) connection.textContent = error.message; }
+        finally { button.disabled = false; }
+      });
+      follow.addEventListener('change', () => { if (follow.checked) editor.revealLine(editor.getModel().getLineCount()); });
+      renderHistory(); if (order.length) selectRun(order[0]); poll();
     });
   </script>
 </body>

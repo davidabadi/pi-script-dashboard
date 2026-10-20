@@ -4,8 +4,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "worker": "node worker.js",
+    "migrate": "node bin/migrate.js",
+    "backup": "node bin/backup.js",
     "test": "node --test",
-    "check": "node --check server.js && node --test",
+    "check": "node --check server.js && node --check worker.js && node --test",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "build:css": "tailwindcss -i ./tailwind.css -o ./public/tailwind.css --minify"
   },

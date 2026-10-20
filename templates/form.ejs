@@ -49,6 +49,14 @@
           <input id="script" type="text" name="script" value="<%= data.script %>" required class="input font-mono" />
         </div>
         <div class="space-y-2">
+          <label for="log_mode" class="field-label">Log source</label>
+          <select id="log_mode" name="log_mode" class="input">
+            <option value="stdout" <%= data.log_mode === 'stdout' ? 'selected' : '' %>>Console output (stdout/stderr)</option>
+            <option value="file" <%= data.log_mode === 'file' ? 'selected' : '' %>>Script writes the log file</option>
+          </select>
+          <p class="text-xs">Console capture is best for new scripts. File mode follows new output in the configured log.</p>
+        </div>
+        <div class="space-y-2">
           <label for="log" class="field-label">Log path</label>
           <input id="log" type="text" name="log" value="<%= data.log %>" required class="input font-mono" />
         </div>
@@ -58,8 +66,9 @@
         </div>
       </div>
 
-      <input type="hidden" name="content" id="hidden-content" />
-      <input type="hidden" name="config_content" id="hidden-config-content" />
+      <input type="hidden" name="content" id="hidden-content" value="<%= data.content || '' %>" />
+      <input type="hidden" name="config_content" id="hidden-config-content" value="<%= data.config_content || '' %>" />
+      <input type="hidden" name="editor_ready" id="editor-ready" value="false" />
       <input type="hidden" name="config_enabled" id="config-enabled" value="<%= data.config_path ? 'true' : 'false' %>" />
       <section aria-labelledby="script-heading" class="space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -97,13 +106,19 @@
       </section>
 
       <div class="flex flex-wrap justify-end gap-2">
+        <p id="editor-loading" class="text-xs" role="status">Loading editors…</p>
         <a href="/" class="btn btn-ghost">Cancel</a>
-        <button type="submit" class="btn btn-primary"><%= isNew ? 'Add script' : 'Save changes' %></button>
+        <button type="submit" id="save-script" class="btn btn-primary" disabled><%= isNew ? 'Add script' : 'Save changes' %></button>
       </div>
     </form>
   </main>
 
   <script nonce="<%= cspNonce %>">
+    setTimeout(() => {
+      if (document.getElementById('editor-ready').value !== 'true') {
+        document.getElementById('editor-loading').textContent = 'Editors could not load. Reload before saving.';
+      }
+    }, 10000);
     require.config({ paths: { vs: '/vendor/monaco/vs' } });
     require(['vs/editor/editor.main'], function () {
       const mql = window.matchMedia('(prefers-color-scheme: dark)');
@@ -149,7 +164,8 @@
         document.getElementById('log'),
         document.getElementById('lock'),
         document.getElementById('timer'),
-        configPathField
+        configPathField,
+        document.getElementById('log_mode')
       ];
       const getFormSnapshot = () => ({
         name: fields[0].value,
@@ -157,6 +173,7 @@
         log: fields[2].value,
         lock: fields[3].value,
         timer: fields[4].value,
+        log_mode: fields[6].value,
         content: editor.getValue(),
         config_path: fields[5].value,
         config_content: configEditor.getValue(),
@@ -313,6 +330,9 @@
         document.getElementById('hidden-config-content').value = configEditor.getValue();
         isDirty = false;
       });
+      document.getElementById('editor-ready').value = 'true';
+      document.getElementById('save-script').disabled = false;
+      document.getElementById('editor-loading').textContent = '';
     });
   </script>
 </body>

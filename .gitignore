@@ -10,6 +10,18 @@ update_dashboard.sh
 # Local runtime/test state
 .runtime/
 coverage/
+output/playwright/
+.playwright-mcp/
+state/
+__pycache__/
+*.py[cod]
+*.sqlite
+*.sqlite-*
+*.db
+*.db-wal
+*.db-shm
+backups/
+*.migration-backup.*
 
 # Deployment secrets must live outside the repository. These patterns are a
 # final guardrail in case a private values file is accidentally copied here.
