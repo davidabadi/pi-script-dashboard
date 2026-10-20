@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <title>Pi Script Dashboard</title>
-  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-  <link rel="manifest" href="/site.webmanifest" crossorigin="use-credentials" />
+  <link rel="icon" type="image/png" href="/favicon-96x96.png?v=<%= cacheBust %>" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= cacheBust %>" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=<%= cacheBust %>" />
+  <link rel="manifest" href="/site.webmanifest?v=<%= cacheBust %>" crossorigin="use-credentials" />
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script nonce="<%= cspNonce %>" src="/vendor/monaco/vs/loader.js"></script>
 </head>
@@ -19,7 +19,7 @@
   <div class="page-container">
     <header class="app-header">
       <a href="/" class="app-brand" aria-label="Pi Script Dashboard home">
-        <img src="/favicon.svg" alt="" class="app-logo" />
+        <img src="/favicon.svg?v=<%= cacheBust %>" alt="" class="app-logo" />
         <span>Pi Script Dashboard</span>
       </a>
       <div class="header-actions">

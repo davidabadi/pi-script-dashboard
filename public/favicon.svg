@@ -1,19 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
-  <defs>
-    <linearGradient id="logo-gradient" x1="12" y1="10" x2="54" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#0F172A" />
-      <stop offset="0.5" stop-color="#111827" />
-      <stop offset="1" stop-color="#EC4899" />
-    </linearGradient>
-    <linearGradient id="logo-sheen" x1="18" y1="12" x2="44" y2="48" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFF1F8" stop-opacity="0.8" />
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
-    </linearGradient>
-  </defs>
-  <rect x="4" y="4" width="56" height="56" rx="18" fill="url(#logo-gradient)" />
-  <path d="M17 17H47" stroke="white" stroke-width="6" stroke-linecap="round" />
-  <path d="M22 17V46" stroke="white" stroke-width="6" stroke-linecap="round" />
-  <path d="M33 17V40" stroke="white" stroke-width="6" stroke-linecap="round" />
-  <path d="M41 28L48 35L41 42" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-  <path d="M12 13C18 10 27 9 37 12C29 12 21 15 14 21" fill="url(#logo-sheen)" fill-opacity="0.75" />
+  <rect width="64" height="64" rx="16" fill="#142e2b" />
+  <path d="M18 21L29 32L18 43M35 43H46" stroke="#5eead4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
 </svg>

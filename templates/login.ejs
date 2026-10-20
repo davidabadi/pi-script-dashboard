@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <title>Sign in - Pi Script Dashboard</title>
-  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-  <link rel="manifest" href="/site.webmanifest" crossorigin="use-credentials" />
+  <link rel="icon" type="image/png" href="/favicon-96x96.png?v=<%= cacheBust %>" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= cacheBust %>" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=<%= cacheBust %>" />
+  <link rel="manifest" href="/site.webmanifest?v=<%= cacheBust %>" crossorigin="use-credentials" />
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
 </head>
 <body class="app-shell flex min-h-screen items-center justify-center px-4 py-8 sm:px-6">
   <main class="panel w-full max-w-sm p-6 sm:p-8">
     <div class="app-brand">
-      <img src="/favicon.svg" alt="" class="app-logo" />
+      <img src="/favicon.svg?v=<%= cacheBust %>" alt="" class="app-logo" />
       <p class="text-sm font-semibold">Pi Script Dashboard</p>
     </div>
     <h1 class="page-title mt-6">Sign in</h1>

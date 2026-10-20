@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <title><%= isNew ? 'New script' : 'Edit script' %> - Pi Script Dashboard</title>
-  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-  <link rel="manifest" href="/site.webmanifest" crossorigin="use-credentials" />
+  <link rel="icon" type="image/png" href="/favicon-96x96.png?v=<%= cacheBust %>" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=<%= cacheBust %>" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=<%= cacheBust %>" />
+  <link rel="manifest" href="/site.webmanifest?v=<%= cacheBust %>" crossorigin="use-credentials" />
   <link rel="stylesheet" href="/tailwind.css?v=<%= cacheBust %>" />
   <script nonce="<%= cspNonce %>" src="/vendor/monaco/vs/loader.js"></script>
 </head>
@@ -16,7 +16,7 @@
   <main class="page-container">
     <header class="app-header mb-6">
       <div class="app-brand min-w-0">
-        <img src="/favicon.svg" alt="" class="app-logo" />
+        <img src="/favicon.svg?v=<%= cacheBust %>" alt="" class="app-logo" />
         <div class="min-w-0">
           <h1 class="page-title break-words"><%= isNew ? 'New script' : data.name %></h1>
           <% if (!isNew) { %><p class="page-subtitle">Edit script</p><% } %>
