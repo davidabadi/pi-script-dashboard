@@ -25,8 +25,8 @@ Cloudflare Access is mandatory even though PAM remains enabled. A Tunnel without
 
 ## Security behavior
 
-- Sessions use secure, HTTP-only, same-site cookies; expire after 30 idle minutes; and have a 12-hour absolute lifetime.
-- `/api/events` requires the authenticated session and rejects cross-origin streams. The SPA keeps one active stream per browser view; connection counts and output buffering are bounded. Logout closes that session's streams, and open streams revalidate session expiry without renewing idle activity. Keepalive comments carry no application state.
+- Sessions use secure, HTTP-only, same-site cookies; expire after 12 idle hours; and have a 24-hour absolute lifetime.
+- `/api/events` requires the authenticated session and rejects cross-origin streams. The SPA keeps one active stream per browser view; connection counts and output buffering are bounded. Live updates pause after 30 minutes without navigation or actions, while the login remains valid. Navigation, actions, and explicit reconnect reset that idle timer and resume updates. Watching logs, scrolling, and typing alone do not reset it. Logout closes that session's streams, and open streams revalidate session expiry without renewing idle activity. Keepalive comments carry no application state.
 - All mutations require an authenticated session, same-origin request, and CSRF token.
 - Login attempts are limited per username and client IP.
 - Scripts, configs, logs, and locks are restricted to configured roots; traversal and symlink paths are rejected.

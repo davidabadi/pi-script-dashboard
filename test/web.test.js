@@ -173,6 +173,28 @@ test("expired sessions produce API 401, consistent with browser reauthentication
   assert.equal((await f.request("/")).headers.get("location"), "/login");
 });
 
+test("login sets a 12-hour cookie and a fixed 24-hour maximum lifetime", async (t) => {
+  const f = await fixture(t);
+  const before = Date.now();
+  await f.login();
+  const after = Date.now();
+  const value = await new Promise((resolve, reject) => f.sessions.all((error, values) => {
+    if (error) return reject(error);
+    resolve(Object.values(values).find((item) => item.logged_in));
+  }));
+  assert.equal(value.cookie.originalMaxAge, 12 * 60 * 60 * 1000);
+  assert.ok(Date.parse(value.cookie.expires) >= before + 12 * 60 * 60 * 1000);
+  assert.ok(Date.parse(value.cookie.expires) <= after + 12 * 60 * 60 * 1000);
+  assert.ok(value.absoluteExpiresAt >= before + 24 * 60 * 60 * 1000);
+  assert.ok(value.absoluteExpiresAt <= after + 24 * 60 * 60 * 1000);
+  assert.equal((await f.post("/api/activity", {})).status, 200);
+  const renewed = await new Promise((resolve, reject) => f.sessions.all((error, values) => {
+    if (error) return reject(error);
+    resolve(Object.values(values).find((item) => item.logged_in));
+  }));
+  assert.equal(renewed.absoluteExpiresAt, value.absoluteExpiresAt);
+});
+
 test("saving before the editors load cannot replace existing script contents", async (t) => {
   const f = await fixture(t); await f.login();
   const { saved, values } = await f.addJob();
@@ -202,7 +224,7 @@ test("background reads do not extend an unattended administrator's idle deadline
   await new Promise((resolve, reject) => f.sessions.all((error, values) => {
     if (error) return reject(error);
     const [id, value] = Object.entries(values).find(([, item]) => item.logged_in);
-    value.lastActivityAt = expected = Date.now() - 60000;
+    value.lastActivityAt = expected = Date.now() - 11 * 60 * 60 * 1000;
     f.sessions.set(id, value, (failure) => failure ? reject(failure) : resolve());
   }));
   assert.equal((await f.request("/api/jobs")).status, 200);
@@ -210,7 +232,7 @@ test("background reads do not extend an unattended administrator's idle deadline
     if (error) return reject(error);
     const [id, value] = Object.entries(values).find(([, item]) => item.logged_in);
     assert.equal(value.lastActivityAt, expected);
-    value.lastActivityAt = Date.now() - 1800001;
+    value.lastActivityAt = Date.now() - 12 * 60 * 60 * 1000 - 1;
     f.sessions.set(id, value, (failure) => failure ? reject(failure) : resolve());
   }));
   assert.equal((await f.request("/api/jobs")).status, 401);
@@ -291,6 +313,34 @@ test("only explicit SPA navigation or actions renew idle activity", async (t) =>
   assert.equal((await read())[1].lastActivityAt, original);
   assert.equal((await f.post("/api/activity", {}, { Accept: "application/json" })).status, 200);
   assert.ok((await read())[1].lastActivityAt > original);
+});
+
+test("live updates pause after 30 minutes and browsing resumes them without another login", async (t) => {
+  const f = await fixture(t); await f.login();
+  const read = () => new Promise((resolve, reject) => f.sessions.all((error, values) => {
+    if (error) return reject(error);
+    resolve(Object.entries(values).find(([, value]) => value.logged_in));
+  }));
+  const [id, value] = await read();
+  const idleSince = value.lastActivityAt = Date.now() - 31 * 60 * 1000;
+  const maximum = value.absoluteExpiresAt;
+  await new Promise((resolve, reject) => f.sessions.set(id, value, (error) => error ? reject(error) : resolve()));
+  const paused = await f.request("/api/events");
+  assert.equal(paused.status, 200);
+  assert.equal(paused.headers.get("set-cookie"), null);
+  assert.match(await paused.text(), /event: live-idle/);
+  assert.equal((await f.request("/api/jobs")).status, 200);
+  assert.equal((await read())[1].lastActivityAt, idleSince);
+  assert.equal((await f.post("/api/activity", {})).status, 200);
+  assert.ok((await read())[1].lastActivityAt > idleSince);
+  assert.equal((await read())[1].absoluteExpiresAt, maximum);
+  const controller = new AbortController();
+  const resumed = await f.request("/api/events", { signal: controller.signal });
+  const reader = resumed.body.getReader();
+  try {
+    assert.equal(resumed.status, 200);
+    assert.match(new TextDecoder().decode((await reader.read()).value), /event: snapshot/);
+  } finally { controller.abort(); await reader.cancel().catch(() => {}); }
 });
 
 test("authenticated SSE forwards committed state and incremental logs and closes on logout", async (t) => {

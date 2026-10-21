@@ -15,6 +15,7 @@ const { syncSchedules } = require("./lib/scheduler");
 const { readRunLog } = require("./lib/run-logs");
 const { editJobFiles, recoverJobFiles } = require("./lib/job-files");
 const { createLiveEvents } = require("./lib/live-events");
+const { SESSION_IDLE_MS, SESSION_MAX_MS } = require("./lib/session-policy");
 
 function publicRun(run) {
   if (!run) return null;
@@ -53,10 +54,10 @@ function createApp(options = {}) {
   app.use(securityHeaders);
   app.use(express.urlencoded({ extended: false, limit: "300kb", parameterLimit: 30 }));
   app.use(express.json({ limit: "32kb", strict: true }));
-  app.use(session({ store: options.sessionStore || new FileStore({ path: config.sessionDir, retries: 1, ttl: 1800, reapInterval: 600 }),
+  app.use(session({ store: options.sessionStore || new FileStore({ path: config.sessionDir, retries: 1, ttl: SESSION_IDLE_MS / 1000, reapInterval: 600 }),
     name: cookieName, secret: Buffer.byteLength(secret) >= 32 ? secret : crypto.randomBytes(48).toString("base64url"),
     resave: false, saveUninitialized: false, rolling: true,
-    cookie: { httpOnly: true, secure: production, sameSite: "strict", path: "/", maxAge: 1800000 } }));
+    cookie: { httpOnly: true, secure: production, sameSite: "strict", path: "/", maxAge: SESSION_IDLE_MS } }));
   app.use(csrfMiddleware);
   app.use(requireSameOrigin((env.TRUSTED_HOSTS || "localhost:8080,127.0.0.1:8080").split(",").map((s) => s.trim()).filter(Boolean)));
   app.use((req, res, next) => {
@@ -75,7 +76,7 @@ function createApp(options = {}) {
     const reject = () => wantsJson(req) || ["/update", "/update-status"].includes(req.path) ? res.status(401).json({ error: "Session expired. Sign in again." }) : res.redirect("/login");
     if (!req.session.logged_in) return reject();
     const now = Date.now();
-    if (req.session.absoluteExpiresAt <= now || (req.session.lastActivityAt && req.session.lastActivityAt + 1800000 <= now)) return req.session.destroy(reject);
+    if (req.session.absoluteExpiresAt <= now || (req.session.lastActivityAt && req.session.lastActivityAt + SESSION_IDLE_MS <= now)) return req.session.destroy(reject);
     // Event streams and background reads never renew an unattended session.
     // SPA navigation explicitly posts /api/activity; user actions also renew it.
     if (req.method !== "GET" || (!req.path.startsWith("/api/") && req.path !== "/update-status")) req.session.lastActivityAt = now;
@@ -100,7 +101,7 @@ function createApp(options = {}) {
       if (!authenticated) { audit("login.failure", { user: username, ip: req.ip }); flash(req, "error", "Invalid credentials"); return res.redirect("/login"); }
       req.session.regenerate((error) => {
         if (error) return next(error);
-        Object.assign(req.session, { logged_in: true, username, absoluteExpiresAt: Date.now() + 43200000, lastActivityAt: Date.now(), csrfToken: crypto.randomBytes(32).toString("base64url") });
+        Object.assign(req.session, { logged_in: true, username, absoluteExpiresAt: Date.now() + SESSION_MAX_MS, lastActivityAt: Date.now(), csrfToken: crypto.randomBytes(32).toString("base64url") });
         audit("login.success", { user: username, ip: req.ip }); res.redirect("/");
       });
     } catch (error) { next(error); }

@@ -23,6 +23,8 @@
   let receiveHistory = () => {};
   let receiveLog = () => {};
   let selectedStream = {};
+  let activityPending = false;
+  let activityVersion = 0;
   let monacoPromise;
 
   function element(tag, attributes = {}, children = []) {
@@ -67,10 +69,11 @@
     const worker = snapshot.worker || {};
     const update = snapshot.update || {};
     const state = streamState === 'connected' ? 'connected' : streamState === 'connecting' ? 'connecting' : 'disconnected';
-    connectionLabel.textContent = state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting' : 'Disconnected';
+    connectionLabel.textContent = streamState === 'idle' ? 'Live updates paused' : state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting' : 'Disconnected';
     connection.dataset.state = state;
     reconnectButton.hidden = state !== 'disconnected';
     const notices = [];
+    if (streamState === 'idle') notices.push('Browse to another page or reconnect to resume live updates.');
     if (streamState === 'connected' && !worker.online) notices.push('Execution service is offline; queued jobs will wait.');
     if (worker.draining) notices.push('Finishing active jobs before maintenance.');
     if (updateActive(update)) notices.push(update.message || 'The dashboard update is in progress.');
@@ -103,6 +106,7 @@
     else throw new Error('The server returned an unexpected response. Reconnect or reload before trying again.');
     if (data.snapshot) acceptSnapshot(data.snapshot);
     if (!response.ok || data.ok === false) throw new Error(data.error || data.message || `Request failed (${response.status}).`);
+    if (options.method === 'POST' && url !== '/logout' && streamState === 'idle') connectStream({ ...selectedStream });
     return data;
   }
   function post(url, body = new URLSearchParams()) {
@@ -116,9 +120,11 @@
   function connectStream(selection = {}) {
     selectedStream = selection;
     const key = `${selection.jobId || ''}:${selection.runId || ''}`;
-    if (source && key === streamKey) return;
+    if (source && key === streamKey && !activityPending) return;
     source?.close();
+    source = null;
     if (expired) return;
+    if (activityPending) { streamState = 'connecting'; showConnection(); return; }
     streamKey = key;
     const parameters = new URLSearchParams();
     if (selection.jobId) parameters.set('jobId', selection.jobId);
@@ -153,12 +159,25 @@
     listen('snapshot', acceptSnapshot);
     listen('history', data => receiveHistory(data));
     listen('log', data => receiveLog(data));
+    listen('live-idle', () => {
+      stream.close(); source = null; streamState = 'idle'; showConnection();
+    });
     listen('auth-expired', expireSession);
   }
   function allowNavigation() { return !dirty() || window.confirm('Discard your unsaved changes?'); }
   async function recordActivity() {
-    try { await post('/api/activity'); }
-    catch (error) { if (!expired) announce(error.message, 'error'); }
+    const version = ++activityVersion;
+    activityPending = true;
+    try {
+      await post('/api/activity');
+      if (version !== activityVersion) return;
+      activityPending = false;
+      connectStream({ ...selectedStream });
+    } catch (error) {
+      if (version !== activityVersion) return;
+      activityPending = false;
+      if (!expired) { streamState = 'stopped'; showConnection(); announce(error.message, 'error'); }
+    }
   }
   function navigate(href, { replace = false, force = false } = {}) {
     const url = new URL(href, location.href);
@@ -166,15 +185,15 @@
     if (replace) history.replaceState({}, '', url.pathname + url.search);
     else history.pushState({}, '', url.pathname + url.search);
     currentPath = location.pathname + location.search;
-    renderRoute(true);
     recordActivity();
+    renderRoute(true);
     return true;
   }
   window.addEventListener('popstate', () => {
     if (!allowNavigation()) { history.pushState({}, '', currentPath); return; }
     currentPath = location.pathname + location.search;
-    renderRoute(true);
     recordActivity();
+    renderRoute(true);
   });
   window.addEventListener('beforeunload', event => { if (dirty()) { event.preventDefault(); event.returnValue = ''; } });
   document.addEventListener('click', event => {
@@ -534,8 +553,11 @@
     document.title = `${parts.length ? parts[0] === 'new' ? 'New script' : job ? `${parts[0] === 'edit' ? 'Edit' : 'Runs'} · ${job.name}` : 'Script unavailable' : 'Scripts'} · Pi Script Dashboard`;
     if (focus) { main.querySelector('h1')?.focus({ preventScroll: true }); window.scrollTo(0, 0); }
   }
-  reconnectButton.addEventListener('click', () => {
-    source?.close(); source = null; connectStream({ ...selectedStream });
+  reconnectButton.addEventListener('click', async () => {
+    reconnectButton.disabled = true;
+    source?.close(); source = null;
+    try { await recordActivity(); }
+    finally { reconnectButton.disabled = expired; }
   });
   document.getElementById('update-button').addEventListener('click', event => {
     if (!allowNavigation()) return;

@@ -11,6 +11,7 @@ const express = require("express");
 const expressSession = require("express-session");
 const { createLiveEvents } = require("../lib/live-events");
 const { readRunLog, RunLogWriter } = require("../lib/run-logs");
+const { SESSION_IDLE_MS, LIVE_IDLE_MS } = require("../lib/session-policy");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, timeout = 2000) {
@@ -242,17 +243,91 @@ test("revoked sessions are rejected initially and ongoing streams receive auth-e
   assert.equal(result.headers.get("content-type").includes("event-stream"), false);
 });
 
-test("idle and absolute deadlines expire independently of keepalive traffic", async (t) => {
+test("live inactivity pauses the stream without expiring or renewing the authenticated session", async (t) => {
+  const f = await fixture(t, { keepaliveMs: 5, authIntervalMs: 1000 });
+  const session = f.sessions.get("session-a");
+  session.lastActivityAt = Date.now() - LIVE_IDLE_MS + 100;
+  const activity = session.lastActivityAt;
+  const stream = await f.stream("?jobId=job-a&runId=run-a");
+  await until(() => stream.events.some((event) => event.type === "live-idle") && stream.ended);
+  assert.ok(stream.comments > 0);
+  assert.deepEqual(stream.events.at(-1).data, { message: "Live updates paused after 30 minutes without navigation or actions." });
+  assert.equal(stream.events.some((event) => event.type === "auth-expired"), false);
+  assert.equal(f.sessions.get("session-a"), session);
+  assert.equal(session.lastActivityAt, activity);
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.counts.unsubscribed, 1);
+});
+
+test("an initially idle live view reports pause without subscribing or reading application data", async (t) => {
+  const f = await fixture(t);
+  const session = f.sessions.get("session-a");
+  session.lastActivityAt = Date.now() - LIVE_IDLE_MS - 1;
+  const activity = session.lastActivityAt;
+  const stream = await f.stream("?jobId=job-a&runId=run-a");
+  await until(() => stream.ended);
+  assert.equal(stream.response.statusCode, 200);
+  assert.match(stream.response.headers["content-type"], /^text\/event-stream/);
+  assert.deepEqual(stream.events.map((event) => event.type), ["live-idle"]);
+  assert.deepEqual({ snapshot: f.counts.snapshot, history: f.counts.history, log: f.counts.log }, { snapshot: 0, history: 0, log: 0 });
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.counts.unsubscribed, 0);
+  assert.equal(session.lastActivityAt, activity);
+});
+
+test("explicit activity extends an open stream past its old idle deadline and resumes a paused view", async (t) => {
+  const f = await fixture(t, { authIntervalMs: 10 });
+  const session = f.sessions.get("session-a");
+  session.lastActivityAt = Date.now() - LIVE_IDLE_MS + 150;
+  const originalDeadline = session.lastActivityAt + LIVE_IDLE_MS;
+  const stream = await f.stream();
+  await until(() => stream.events.length === 1);
+  // Navigation and user actions save this timestamp through /api/activity or
+  // their mutation request. The stream must reread that current stored value.
+  session.lastActivityAt = Date.now();
+  const activity = session.lastActivityAt;
+  await until(() => Date.now() > originalDeadline + 30);
+  assert.equal(stream.ended, false);
+  assert.deepEqual(stream.events.map((event) => event.type), ["snapshot"]);
+  assert.equal(session.lastActivityAt, activity);
+  session.lastActivityAt = Date.now() - LIVE_IDLE_MS - 1;
+  await until(() => stream.events.some((event) => event.type === "live-idle") && stream.ended);
+  session.lastActivityAt = Date.now();
+  const resumed = await f.stream();
+  await until(() => resumed.events.length === 1);
+  assert.equal(resumed.events[0].type, "snapshot");
+  assert.equal(resumed.ended, false);
+});
+
+test("authentication idle and absolute expiry still sign out streams despite keepalive traffic", async (t) => {
   for (const deadline of ["idle", "absolute"]) {
-    const f = await fixture(t, { keepaliveMs: 5, authIntervalMs: 1000 });
+    const f = await fixture(t, { keepaliveMs: 5, authIntervalMs: 15 });
     const session = f.sessions.get("session-a");
-    if (deadline === "idle") session.lastActivityAt = Date.now() - 1800000 + 100;
-    else session.absoluteExpiresAt = Date.now() + 100;
     const stream = await f.stream();
-    await until(() => stream.events.some((event) => event.type === "auth-expired"));
-    assert.ok(stream.comments > 0);
+    await until(() => stream.comments >= 2);
+    if (deadline === "idle") session.lastActivityAt = Date.now() - SESSION_IDLE_MS - 1;
+    else session.absoluteExpiresAt = Date.now() - 1;
+    const activity = session.lastActivityAt;
+    await until(() => stream.events.some((event) => event.type === "auth-expired") && stream.ended);
+    assert.equal(stream.events.some((event) => event.type === "live-idle"), false);
+    assert.equal(session.lastActivityAt, activity);
     assert.equal(f.listeners.size, 0);
+    const result = await fetch(`${f.base}/api/events`);
+    assert.equal(result.status, 401);
   }
+});
+
+test("malformed authentication state is rejected instead of treated as a paused live view", async (t) => {
+  const f = await fixture(t);
+  const original = { ...f.sessions.get("session-a"), lastActivityAt: Date.now() - LIVE_IDLE_MS - 1 };
+  for (const invalid of [{ logged_in: false }, { lastActivityAt: null }, { absoluteExpiresAt: "later" }]) {
+    f.sessions.set("session-a", { ...original, ...invalid });
+    const response = await fetch(`${f.base}/api/events`);
+    assert.equal(response.status, 401);
+  }
+  assert.equal(f.counts.snapshot, 0);
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.counts.unsubscribed, 0);
 });
 
 test("logout closes only that session promptly and connection limits are enforced", async (t) => {
@@ -309,7 +384,7 @@ test("express-session cannot renew or resurrect a session when a long-lived stre
   const sessions = new expressSession.MemoryStore();
   const app = express();
   app.use(expressSession({ secret: "live-events-test-only-secret-value", store: sessions, resave: false, saveUninitialized: false,
-    rolling: true, cookie: { maxAge: 1800000 } }));
+    rolling: true, cookie: { maxAge: SESSION_IDLE_MS } }));
   app.get("/seed", (req, res) => {
     Object.assign(req.session, { logged_in: true, absoluteExpiresAt: Date.now() + 60000, lastActivityAt: Date.now() });
     res.json({ id: req.sessionID });
@@ -333,6 +408,15 @@ test("express-session cannot renew or resurrect a session when a long-lived stre
   await first.text();
   assert.equal((await getSession()).cookie.expires, original.cookie.expires);
   assert.equal((await getSession()).lastActivityAt, original.lastActivityAt);
+  const idle = { ...original, lastActivityAt: Date.now() - LIVE_IDLE_MS - 1 };
+  await new Promise((resolve, reject) => sessions.set(id, idle, (error) => error ? reject(error) : resolve()));
+  const paused = await fetch(`${base}/api/events`, { headers: { Cookie: cookie } });
+  assert.equal(paused.status, 200);
+  assert.equal(paused.headers.get("set-cookie"), null);
+  assert.match(await paused.text(), /event: live-idle/);
+  assert.equal((await getSession()).cookie.expires, original.cookie.expires);
+  assert.equal((await getSession()).lastActivityAt, idle.lastActivityAt);
+  await new Promise((resolve, reject) => sessions.set(id, original, (error) => error ? reject(error) : resolve()));
   const second = await fetch(`${base}/api/events`, { headers: { Cookie: cookie } });
   await new Promise((resolve) => sessions.destroy(id, resolve));
   live.closeSession(id);

@@ -1434,7 +1434,7 @@ This step is performed in the Cloudflare Zero Trust dashboard. A Tunnel by itsel
 1. Go to **Zero Trust → Access controls → Applications**.
 2. Create an application and choose **Self-hosted and private**.
 3. Set the application hostname to the exact `$DASHBOARD_HOST`; do not use a broad wildcard.
-4. Set application session duration to **8 hours**.
+4. Set application session duration to **24 hours**.
 5. Add an **Allow** policy containing only the administrator email addresses or identity-provider group recorded in the private deployment record.
 6. Add an MFA requirement:
    - for IdP MFA, add **Require → Authentication method → mfa**; or
@@ -1489,8 +1489,11 @@ Expected:
 - a valid password for a user outside `pi-dashboard-admins` is rejected;
 - the approved PAM user reaches the dashboard;
 - logout returns to the login page;
-- after 30 idle minutes the application session expires;
+- after 30 idle minutes live updates pause without signing out; navigation, actions, or Reconnect resume them;
+- the application session expires after 12 idle hours or 24 hours from login;
 - Cloudflare and PAM are separate prompts when both sessions have expired.
+
+After deploying a change to session lifetimes, sign out and back in to receive the new cookie lifetime and maximum deadline; existing sessions retain their original values.
 
 On the **Pi**, inspect security audit events without exposing job/config contents:
 
@@ -1573,7 +1576,7 @@ Expected:
 
 The enqueue CLI is silent for accepted runs and busy-job skips; real queueing errors still write to stderr and exit nonzero, so the existing cron `MAILTO` can report those failures. Job outcome emails remain script-owned: keep failure and partial-result notification logic in the scripts' existing mail setup. Queue silence does not disable their mail transport or the separate full-backup failure notifier.
 
-Leave a view unattended until its application session expires, and verify a clear sign-in message appears instead of a permanent reconnect loop. Sign in again and confirm history/log access recovers. Logout in another dashboard tab must close that session's live streams. Retest a web-only restart: the browser reconnects with a fresh state snapshot while the worker job and private reporting hook continue.
+Leave a view unattended for 30 minutes and verify live updates pause while the login and editor controls remain available. Navigate to another view or click Reconnect and confirm updates resume; browsing and actions must reset the 30-minute timer. Leave a session idle for 12 hours, or open for 24 hours from login, and verify a clear sign-in message appears on the next request instead of a permanent reconnect loop. Sign in again and confirm history/log access recovers. Logout in another dashboard tab must close that session's live streams. Retest a web-only restart: the browser reconnects with a fresh state snapshot while the worker job and private reporting hook continue.
 
 Red flags: process runs as root, credentials appear in logs, lock remains after completion, job writes legacy paths, or permissions are broadened as a workaround.
 
@@ -1729,7 +1732,7 @@ After sign-in, dashboard, editor, and log/history views share one page shell and
 
 Committed Store mutations write a bounded private `${DB_FILE}.changes` wakeup file. The web process watches its parent directory so atomic replacement does not detach the subscription. Captured per-run log writes are watched in `${LOG_ROOT}/runs`. Linux delivers these filesystem changes through inotify; same-process changes also notify subscribers directly. Routine worker heartbeat updates do not broadcast dashboard refreshes, while worker start/stop and a return after stale heartbeat do. Normal browser updates do not require repeated HTTP requests or periodic registry/log scans.
 
-Transport keepalive comments use the existing open response and carry no status/log payload. Separate local timers enforce session expiry, worker liveness, and slow-client limits. An open stream does not extend the 30-minute idle session or its 12-hour maximum lifetime. Logout closes all streams for that application session; connection counts are bounded, including multiple browser tabs.
+Transport keepalive comments use the existing open response and carry no status/log payload. Separate local timers enforce live-update idle pause, session expiry, worker liveness, and slow-client limits. Live updates pause after 30 minutes without navigation or actions; browsing, actions, and explicit reconnect reset that timer. An open stream does not extend the login's 12-hour idle timeout or its 24-hour maximum lifetime. Logout closes all streams for that application session; connection counts are bounded, including multiple browser tabs.
 
 On reconnect, the server sends current SQLite state and recent history. A `Last-Event-ID` value of `log:<runId>:<nextByteOffset>` resumes the selected run's captured log; a byte-offset query also supports reopening a view. Notifications are wakeups rather than a durable event journal, so the initial/reconnection snapshot and authoritative captured files recover changes missed while disconnected. The browser displays reconnection and authentication failures clearly. Historical log text remains escaped, and tail following respects the reader's scroll position.
 
