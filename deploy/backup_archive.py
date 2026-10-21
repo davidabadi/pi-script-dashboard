@@ -89,7 +89,7 @@ def validate_backup_config(config):
         raise BackupError("Backup configuration must be a JSON object.")
     values = dict(config)
     defaults = {
-        "backup_directory": "/var/lib/pi-script-dashboard/backups/pi-dashboard", "keep": 7,
+        "backup_directory": "/var/lib/pi-script-dashboard/backups/servers/pi-dashboard", "keep": 7,
         "runtime_root": "/var/lib/pi-script-dashboard",
         "script_root": "/var/lib/pi-script-dashboard/scripts",
         "config_root": "/var/lib/pi-script-dashboard/configs",

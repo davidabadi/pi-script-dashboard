@@ -7,7 +7,7 @@ A private Raspberry Pi console for editing, scheduling, and running local mainte
 - One authenticated server-sent event connection pushes status, run history, and incremental logs when they change. Dashboard, editor, and log navigation stay in the SPA; reconnects resume captured logs from their byte cursor.
 - Jobs choose configured file logs or captured stdout/stderr. Completed run details/logs retain 30 days by default, with a 10 MiB capture cap per run; each job keeps its latest outcome summary.
 - Renaming preserves job IDs and history. Script/config files and captured logs stay on disk.
-- Full application backups run weekly, keep the last seven verified archives in `/var/lib/pi-script-dashboard/backups/pi-dashboard`, and email on failure using the Pi's existing outgoing-mail configuration. Each archive includes a consistent SQLite snapshot, scripts/configs, logs, application code, and deployment settings.
+- Full application backups run weekly, keep the last seven verified archives in `/var/lib/pi-script-dashboard/backups/servers/pi-dashboard`, and email on failure using the Pi's existing outgoing-mail configuration. Each archive includes a consistent SQLite snapshot, scripts/configs, logs, application code, and deployment settings.
 
 Production requires Node.js 24, Linux/systemd, a dedicated `pi-dashboard` account, Cloudflare Tunnel and Access with MFA, and the supplied PAM authentication broker. Web listens on `127.0.0.1:8080`; worker reporting hooks listen only on `127.0.0.1:8081`. Editable jobs never run as root.
 

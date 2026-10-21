@@ -19,7 +19,7 @@ TEST_ROOT.mkdir(parents=True, exist_ok=True)
 class BackupSettingsTests(unittest.TestCase):
     def setUp(self):
         self.value = {
-            "backup_directory": "/var/lib/pi-script-dashboard/backups/pi-dashboard",
+            "backup_directory": "/var/lib/pi-script-dashboard/backups/servers/pi-dashboard",
             "mail": {"to": "owner@example.com", "from": "pi@example.com"},
         }
 
@@ -32,7 +32,7 @@ class BackupSettingsTests(unittest.TestCase):
     def test_defaults_and_custom_runtime(self):
         value = self.load()
         self.assertEqual(value["keep"], 7)
-        self.assertEqual(value["backup_directory"], "/var/lib/pi-script-dashboard/backups/pi-dashboard")
+        self.assertEqual(value["backup_directory"], "/var/lib/pi-script-dashboard/backups/servers/pi-dashboard")
         self.assertEqual(value["drain_timeout_seconds"], 3600)
         self.assertEqual(value["db_file"], "/var/lib/pi-script-dashboard/dashboard.sqlite")
         self.assertEqual(value["mail"]["sendmail_path"], "/usr/sbin/sendmail")

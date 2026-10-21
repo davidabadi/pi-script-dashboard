@@ -1,5 +1,5 @@
 {
-  "backup_directory": "/var/lib/pi-script-dashboard/backups/pi-dashboard",
+  "backup_directory": "/var/lib/pi-script-dashboard/backups/servers/pi-dashboard",
   "keep": 7,
   "runtime_root": "/var/lib/pi-script-dashboard",
   "script_root": "/var/lib/pi-script-dashboard/scripts",

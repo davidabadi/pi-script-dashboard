@@ -819,14 +819,14 @@ This step is only for migration from a legacy installation. Fresh installations 
 
 The hardened dashboard rejects the legacy locations `/usr/local/bin`, `/var/log/custom`, `/etc/*.lock`, and `/home/pi/backup-configs`. It accepts only:
 
-| Type | New location | Mode |
-|---|---|---:|
-| Scripts | `/var/lib/pi-script-dashboard/scripts/*.sh` | `0700` |
-| Configs | `/var/lib/pi-script-dashboard/configs/*.{conf,json,yaml,yml}` | `0600` |
-| Logs | `/var/log/pi-script-dashboard/*.log` | `0600` |
-| Locks | `/run/pi-script-dashboard/*.lock` | runtime |
-| Active registry | `/var/lib/pi-script-dashboard/dashboard.sqlite` (plus WAL/SHM) | `0600` |
-| Legacy import input | `/var/lib/pi-script-dashboard/scripts.json` | `0600` |
+| Type                | New location                                                   |    Mode |
+| ------------------- | -------------------------------------------------------------- | ------: |
+| Scripts             | `/var/lib/pi-script-dashboard/scripts/*.sh`                    |  `0700` |
+| Configs             | `/var/lib/pi-script-dashboard/configs/*.{conf,json,yaml,yml}`  |  `0600` |
+| Logs                | `/var/log/pi-script-dashboard/*.log`                           |  `0600` |
+| Locks               | `/run/pi-script-dashboard/*.lock`                              | runtime |
+| Active registry     | `/var/lib/pi-script-dashboard/dashboard.sqlite` (plus WAL/SHM) |  `0600` |
+| Legacy import input | `/var/lib/pi-script-dashboard/scripts.json`                    |  `0600` |
 
 Create subdirectories:
 
@@ -1765,7 +1765,7 @@ If Monaco fails to load, Save remains disabled so an unavailable editor cannot o
 
 ### Full application backups
 
-The full-backup service runs weekly on Sunday at **03:00 America/New_York**, with up to five minutes of scheduling jitter. `Persistent=true` catches a missed run after the Pi starts again. Each successful run publishes one verified archive and checksum under `/var/lib/pi-script-dashboard/backups/pi-dashboard`; only the newest **seven complete backups** are retained. A failed run does not prune good backups. Both scheduled and manual service failures start the independent failure-email unit. There is no separate weekly database backup: the full archive already contains a consistent database snapshot.
+The full-backup service runs weekly on Sunday at **03:00 America/New_York**, with up to five minutes of scheduling jitter. `Persistent=true` catches a missed run after the Pi starts again. Each successful run publishes one verified archive and checksum under `/var/lib/pi-script-dashboard/backups/servers/pi-dashboard`; only the newest **seven complete backups** are retained. A failed run does not prune good backups. Both scheduled and manual service failures start the independent failure-email unit. There is no separate weekly database backup: the full archive already contains a consistent database snapshot.
 
 The helper takes the same root-owned maintenance lock as the updater, drains active jobs, records the existing service/drain state, stops the web service, worker, and update watcher for the snapshot, and restores their previous state afterward, including when a recoverable backup error occurs. Cron may keep enqueueing while the website is stopped; queued work remains in the live database. A drain timeout fails without killing an active job. Inspect the journal after a failed run, especially if restoring services also failed.
 
@@ -1790,7 +1790,7 @@ sudoedit /etc/pi-script-dashboard/backup.json
 sudo stat -c '%U %G %a %n' /etc/pi-script-dashboard/backup.json
 ```
 
-Set `backup_directory` to `/var/lib/pi-script-dashboard/backups/pi-dashboard`, `keep` to `7`, and the mail recipient to your chosen failure-alert address. Retain the default runtime/repository paths unless the actual installation uses different locations. The root-owned configuration uses `mail.transport: "auto"` to reuse an installed `sendmail`-compatible command or `msmtp` and its existing outgoing-mail configuration. Check availability without printing configuration or credentials:
+Set `backup_directory` to `/var/lib/pi-script-dashboard/backups/servers/pi-dashboard`, `keep` to `7`, and the mail recipient to your chosen failure-alert address. Retain the default runtime/repository paths unless the actual installation uses different locations. The root-owned configuration uses `mail.transport: "auto"` to reuse an installed `sendmail`-compatible command or `msmtp` and its existing outgoing-mail configuration. Check availability without printing configuration or credentials:
 
 ```bash
 command -v sendmail || command -v msmtp
@@ -1816,7 +1816,7 @@ sudo journalctl -u pi-script-dashboard-backup-failure.service --since '-5 minute
 sudo systemctl start pi-script-dashboard-backup.service
 sudo systemctl status pi-script-dashboard-backup.service --no-pager --full
 sudo journalctl -u pi-script-dashboard-backup.service --since '-2 hours' --no-pager
-sudo ls -lh /var/lib/pi-script-dashboard/backups/pi-dashboard
+sudo ls -lh /var/lib/pi-script-dashboard/backups/servers/pi-dashboard
 sudo systemctl status pi-script-dashboard.service pi-script-dashboard-worker.service --no-pager
 
 sudo systemctl enable --now pi-script-dashboard-backup.timer
@@ -1845,10 +1845,10 @@ Restore code, state, configuration, and schedules from the same archive. Do not 
    sudo crontab -u pi-dashboard -r
    # Replace the exact archive basename; retain its matching checksum file.
    ARCHIVE='REPLACE_WITH_COMPLETE_ARCHIVE.tar.gz'
-   sudo sh -c 'cd /var/lib/pi-script-dashboard/backups/pi-dashboard && sha256sum -c -- "$1.sha256"' sh "$ARCHIVE"
-   sudo tar -tzf "/var/lib/pi-script-dashboard/backups/pi-dashboard/$ARCHIVE"
+   sudo sh -c 'cd /var/lib/pi-script-dashboard/backups/servers/pi-dashboard && sha256sum -c -- "$1.sha256"' sh "$ARCHIVE"
+   sudo tar -tzf "/var/lib/pi-script-dashboard/backups/servers/pi-dashboard/$ARCHIVE"
    sudo install -d -o root -g root -m 0700 /root/pi-dashboard-recovery/extracted
-   sudo tar --acls --xattrs -xzf "/var/lib/pi-script-dashboard/backups/pi-dashboard/$ARCHIVE" \
+   sudo tar --acls --xattrs -xzf "/var/lib/pi-script-dashboard/backups/servers/pi-dashboard/$ARCHIVE" \
      -C /root/pi-dashboard-recovery/extracted
    ```
 
@@ -1864,7 +1864,7 @@ For rollback to the old JSON release, restore the preserved legacy registry and 
 The worker injects `DASHBOARD_RUN_ID`, `DASHBOARD_HOOK_URL`, and `DASHBOARD_RUN_TOKEN` into each job. Reports use `POST /api/runs/:runId/events` at the injected loopback URL, an `Authorization: Bearer <token>` header, and JSON:
 
 ```json
-{"eventId":"step-1","type":"progress","message":"Uploading backup"}
+{ "eventId": "step-1", "type": "progress", "message": "Uploading backup" }
 ```
 
 `type` is `progress`, `log`, or `partial`. Use a new event ID for each logical event; retry the same ID/payload after a transport failure. Requests are limited to 32 KiB. Credentials and writes are rejected after completion. Hooks report progress or supplemental log text; the process exit code decides success/failure. A partial report only changes an otherwise successful exit to partial. Do not put credentials into report messages or print the injected token.
