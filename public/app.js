@@ -6,6 +6,9 @@
   const main = document.getElementById('app-main');
   const messages = document.getElementById('app-messages');
   const connection = document.getElementById('connection-status');
+  const connectionLabel = document.getElementById('connection-label');
+  const reconnectButton = document.getElementById('reconnect-button');
+  const serviceNotice = document.getElementById('service-notice');
   const labels = { queued: 'Queued', running: 'Running', succeeded: 'Succeeded', partial: 'Partial', failed: 'Failed', interrupted: 'Interrupted', skipped: 'Skipped' };
   let snapshot = bootstrap.snapshot;
   let source = null;
@@ -63,15 +66,18 @@
     if (expired) return;
     const worker = snapshot.worker || {};
     const update = snapshot.update || {};
-    let text = streamState === 'connected' ? 'Live updates connected.' : streamState === 'stopped' ? 'Live updates stopped. Close extra dashboard tabs, then reconnect.' : streamState === 'reconnecting' ? 'Connection lost. Reconnecting automatically…' : 'Connecting to live updates…';
-    if (streamState === 'connected' && !worker.online) text += ' Execution service is offline; queued jobs will wait.';
-    if (worker.draining) text += ' Finishing active jobs before maintenance.';
-    if (updateActive(update)) text += ` ${update.message || 'The dashboard update is in progress.'}`;
-    if (update.status === 'failed') text += ` Update failed: ${update.message || 'Check the deployment service logs.'}`;
-    if (update.status === 'succeeded') text += ' Dashboard updated. Reload when ready to use the new version.';
-    connection.textContent = text;
-    if (streamState === 'stopped') connection.append(' ', button('Reconnect', () => { source?.close(); source = null; connectStream({ ...selectedStream }); }));
-    connection.dataset.state = update.status === 'failed' ? 'error' : streamState;
+    const state = streamState === 'connected' ? 'connected' : streamState === 'connecting' ? 'connecting' : 'disconnected';
+    connectionLabel.textContent = state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting' : 'Disconnected';
+    connection.dataset.state = state;
+    reconnectButton.hidden = state !== 'disconnected';
+    const notices = [];
+    if (streamState === 'connected' && !worker.online) notices.push('Execution service is offline; queued jobs will wait.');
+    if (worker.draining) notices.push('Finishing active jobs before maintenance.');
+    if (updateActive(update)) notices.push(update.message || 'The dashboard update is in progress.');
+    if (update.status === 'failed') notices.push(`Update failed: ${update.message || 'Check the deployment service logs.'}`);
+    serviceNotice.textContent = notices.join(' ');
+    serviceNotice.hidden = notices.length === 0;
+    serviceNotice.dataset.state = update.status === 'failed' ? 'error' : 'warning';
     const updateButton = document.getElementById('update-button');
     updateButton.disabled = updateActive(update);
     updateButton.textContent = updateButton.disabled ? 'Update in progress…' : 'Update dashboard';
@@ -81,7 +87,9 @@
     expired = true;
     source?.close();
     connection.dataset.state = 'error';
-    connection.replaceChildren(document.createTextNode('Your session expired. '), element('a', { href: '/login', text: 'Sign in again' }));
+    connectionLabel.textContent = 'Session expired';
+    reconnectButton.hidden = true;
+    connection.append(element('a', { href: '/login', text: 'Sign in again' }));
     main.querySelectorAll('button[type="submit"], [data-run-button], [data-mutation]').forEach(node => { node.disabled = true; });
     document.getElementById('update-button').disabled = true;
     document.getElementById('logout-button').disabled = true;
@@ -526,6 +534,9 @@
     document.title = `${parts.length ? parts[0] === 'new' ? 'New script' : job ? `${parts[0] === 'edit' ? 'Edit' : 'Runs'} · ${job.name}` : 'Script unavailable' : 'Scripts'} · Pi Script Dashboard`;
     if (focus) { main.querySelector('h1')?.focus({ preventScroll: true }); window.scrollTo(0, 0); }
   }
+  reconnectButton.addEventListener('click', () => {
+    source?.close(); source = null; connectStream({ ...selectedStream });
+  });
   document.getElementById('update-button').addEventListener('click', event => {
     if (!allowNavigation()) return;
     runAction(event.currentTarget, '/update', 'Dashboard update requested. Progress will arrive through live updates.');

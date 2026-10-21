@@ -22,9 +22,9 @@ function main(args = process.argv.slice(2)) {
   if (!fs.existsSync(config.dbFile)) throw new Error("Database not found; initialize or migrate the dashboard before enqueueing runs.");
   const store = new Store(config.dbFile, { legacyFile: config.dataFile });
   try {
-    const result = store.enqueue(job, "cron");
-    process.stdout.write(`${result.accepted ? "Queued" : "Skipped busy job"}: ${result.run.id}\n`);
-    return result;
+    // Cron mails command output. Accepted runs and normal overlap skips belong
+    // in dashboard history, without an email for each scheduled trigger.
+    return store.enqueue(job, "cron");
   } finally { store.close(); }
 }
 

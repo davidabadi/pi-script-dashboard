@@ -34,7 +34,11 @@
         </details>
       </div>
     </header>
-    <div id="connection-status" class="connection-status" role="status" aria-live="polite">Connecting to live updates…</div>
+    <div id="connection-status" class="connection-status" data-state="connecting">
+      <span class="connection-badge" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="connection-label">Connecting</span></span>
+      <button id="reconnect-button" type="button" class="btn btn-ghost connection-reconnect" hidden>Reconnect</button>
+    </div>
+    <div id="service-notice" class="service-notice" role="status" hidden></div>
     <div id="app-messages" class="app-messages" aria-live="polite"></div>
     <main id="app-main" tabindex="-1" aria-busy="true"><p class="page-subtitle">Loading dashboard…</p></main>
     <noscript><p class="alert alert-error">JavaScript is required for this dashboard. Enable it, then reload this page.</p></noscript>

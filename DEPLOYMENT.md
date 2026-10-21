@@ -1568,8 +1568,10 @@ Expected:
 - disable and restore the browser network connection; the reconnect indicator appears, then the selected run resumes at its last received log byte without duplicate lines;
 - scrolling away from the log tail preserves the reading position as new text arrives; following the tail scrolls to new output;
 - restarting only the web service leaves the worker job and reporting hook alive;
-- an enqueue CLI trigger works while the web service is stopped;
+- an enqueue CLI trigger works while the web service is stopped, without stdout/stderr or a routine cron email;
 - duplicate triggers show already queued/running, with skipped cron attempts in history.
+
+The enqueue CLI is silent for accepted runs and busy-job skips; real queueing errors still write to stderr and exit nonzero, so the existing cron `MAILTO` can report those failures. Job outcome emails remain script-owned: keep failure and partial-result notification logic in the scripts' existing mail setup. Queue silence does not disable their mail transport or the separate full-backup failure notifier.
 
 Leave a view unattended until its application session expires, and verify a clear sign-in message appears instead of a permanent reconnect loop. Sign in again and confirm history/log access recovers. Logout in another dashboard tab must close that session's live streams. Retest a web-only restart: the browser reconnects with a fresh state snapshot while the worker job and private reporting hook continue.
 

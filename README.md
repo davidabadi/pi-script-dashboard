@@ -3,6 +3,7 @@
 A private Raspberry Pi console for editing, scheduling, and running local maintenance scripts. SQLite stores job definitions and run history; an independent unprivileged worker executes jobs while the authenticated single-page application displays progress and live logs.
 
 - Manual and cron triggers share a durable queue with one queued/running run per job.
+- Scheduled queueing and busy-job skips stay silent, so cron does not email routine triggers. Script-owned failure/partial-result emails continue to use the scripts' existing mail setup.
 - Status comes from actual process exit results, with optional local progress, log, and partial-outcome hooks.
 - One authenticated server-sent event connection pushes status, run history, and incremental logs when they change. Dashboard, editor, and log navigation stay in the SPA; reconnects resume captured logs from their byte cursor.
 - Jobs choose configured file logs or captured stdout/stderr. Completed run details/logs retain 30 days by default, with a 10 MiB capture cap per run; each job keeps its latest outcome summary.
